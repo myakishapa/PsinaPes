@@ -1,0 +1,36 @@
+#version 450 core
+layout(binding = 0) uniform sampler2D srcEquirect;
+layout(binding = 1) writeonly uniform imageCube dstCubemap;
+
+const float pi = 3.141592;
+const float tau = 2 * pi;
+
+vec3 CubeTexelToDir(uvec3 texel)
+{	
+	vec2 faceCoords = texel.xy / vec2(imageSize(dstCubemap));
+	vec2 centerOriginFaceCoords = faceCoords * 2. - 1.;
+	
+	vec3 dir;
+		
+	if(texel.z == 0)      dir = vec3(1.0,  -centerOriginFaceCoords.y, -centerOriginFaceCoords.x);
+    else if(texel.z == 1) dir = vec3(-1.0, -centerOriginFaceCoords.y, centerOriginFaceCoords.x);
+    else if(texel.z == 2) dir = vec3(centerOriginFaceCoords.x, 1.0, centerOriginFaceCoords.y);
+    else if(texel.z == 3) dir = vec3(centerOriginFaceCoords.x, -1.0, -centerOriginFaceCoords.y);
+    else if(texel.z == 4) dir = vec3(centerOriginFaceCoords.x, -centerOriginFaceCoords.y, 1.0);
+    else if(texel.z == 5) dir = vec3(-centerOriginFaceCoords.x, -centerOriginFaceCoords.y, -1.0);
+	
+	return normalize(dir);
+}
+
+layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+void main()
+{
+	vec3 dir = CubeTexelToDir(gl_GlobalInvocationID);
+	
+	float azimuth = atan(dir.x, dir.y);
+	float zenith = asin(dir.z);
+	
+	vec4 data = texture(srcEquirect, vec2(azimuth / tau + 0.5, -(zenith / pi + 0.5)));
+	
+	imageStore(dstCubemap, ivec3(gl_GlobalInvocationID), data);
+}

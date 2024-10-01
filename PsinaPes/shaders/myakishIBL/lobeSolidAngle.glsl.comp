@@ -1,0 +1,59 @@
+#version 450 core
+layout(binding = 0) writeonly uniform image2D image;
+
+#include "../common/lib.glsl"
+
+vec2 CartesianToSpherical(vec3 dir)
+{
+	return vec2(atan(dir.y, dir.x), asin(dir.z));
+}
+vec3 SphericalToCartesian(vec2 dir)
+{	
+	return vec3(cos(dir.x) * cos(dir.y), sin(dir.x) * cos(dir.y), sin(dir.y));
+}
+
+layout(push_constant) uniform PushConstants
+{	
+	float thresholdRoughness0;
+	float thresholdRoughness1;
+	vec3 F0;
+} pushConstants;
+
+layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+void main()
+{
+	uvec2 size = imageSize(image);
+	vec2 texCoords = vec2(gl_GlobalInvocationID.xy) / vec2(size);
+
+	float roughness = texCoords.x + 1e-5;
+	float NdotWo = texCoords.y + 1e-5;
+
+	vec3 N = vec3(0, 0, 1);
+	vec3 Wo = vec3(sin(acos(NdotWo)), 0, NdotWo);
+	vec3 R = vec3(-Wo.x, -Wo.y, Wo.z);
+
+	float angle = 0;
+	
+	uint samples = 512;
+	
+	float dazimuth = PI * 2 / float(samples);
+	float dzenith = PI / 2 / float(samples);
+	
+	float threshold = mix(pushConstants.thresholdRoughness0, pushConstants.thresholdRoughness1, roughness);
+	
+	for(float azimuth = 0; azimuth <= PI * 2; azimuth += dazimuth)
+	{
+		for(float zenith = 0; zenith <= PI / 2; zenith += dzenith)
+		{
+			vec3 Wi = SphericalToCartesian(vec2(azimuth, zenith));
+			vec3 BRDF = SpecularCookTorrance(Wi, Wo, N, roughness, pushConstants.F0);
+			float maxComponent = max(max(BRDF.x, BRDF.y), BRDF.z);
+			if(maxComponent >= threshold)
+			{
+				angle = max(angle, acos(dot(Wi, R)));
+			}
+		}
+	}
+	
+	if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(image, ivec2(gl_GlobalInvocationID), vec4(angle, 0, 0, 0));
+}

@@ -1,0 +1,19 @@
+#version 450 core
+#extension GL_EXT_shader_image_load_formatted : require
+
+layout(binding = 0) readonly uniform image2D colorImage;
+layout(binding = 1) writeonly uniform image2D swapchainImage;
+
+layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+void main()
+{
+	vec4 color = imageLoad(colorImage, ivec2(gl_GlobalInvocationID));
+	
+	// HDR tonemapping
+    color = color / (color + vec4(1.0));
+    // gamma correct
+    color = pow(color, vec4(1.0/2.2)); 
+	
+	uvec2 size = imageSize(swapchainImage);	
+	if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(swapchainImage, ivec2(gl_GlobalInvocationID), color);
+}

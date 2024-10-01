@@ -1,0 +1,70 @@
+#version 450 core
+layout(binding = 0) uniform samplerCube environmentMap;
+layout(binding = 1) writeonly uniform imageCube dstLayer;
+
+const float pi = 3.141592;
+
+vec3 CubeTexelToDir(uvec3 texel)
+{	
+	vec2 faceCoords = texel.xy / vec2(imageSize(dstLayer));
+	vec2 centerOriginFaceCoords = faceCoords * 2. - 1.;
+	
+	vec3 dir;
+		
+	if(texel.z == 0)      dir = vec3(1.0,  -centerOriginFaceCoords.y, -centerOriginFaceCoords.x);
+    else if(texel.z == 1) dir = vec3(-1.0, -centerOriginFaceCoords.y, centerOriginFaceCoords.x);
+    else if(texel.z == 2) dir = vec3(centerOriginFaceCoords.x, 1.0, centerOriginFaceCoords.y);
+    else if(texel.z == 3) dir = vec3(centerOriginFaceCoords.x, -1.0, -centerOriginFaceCoords.y);
+    else if(texel.z == 4) dir = vec3(centerOriginFaceCoords.x, -centerOriginFaceCoords.y, 1.0);
+    else if(texel.z == 5) dir = vec3(-centerOriginFaceCoords.x, -centerOriginFaceCoords.y, -1.0);
+	
+	return normalize(dir);
+}
+vec2 CartesianToSpherical(vec3 dir)
+{
+	return vec2(atan(dir.y, dir.x), asin(dir.z));
+}
+vec3 SphericalToCartesian(vec2 dir)
+{	
+	return vec3(cos(dir.x) * cos(dir.y), sin(dir.x) * cos(dir.y), sin(dir.y));
+}
+
+layout(push_constant) uniform PushConstants
+{	
+	float theta;
+} pushConstants;
+
+layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+void main()
+{
+	vec3 Wi = CubeTexelToDir(gl_GlobalInvocationID);
+	vec2 WiSpherical = CartesianToSpherical(Wi);
+	
+	float cosTheta = cos(pushConstants.theta);
+	float cosThetaBias = 1e-4;
+	
+	uint samples = 32;
+	vec3 I = vec3(0);
+	//float solidAngle = 0;
+	float dtheta = pushConstants.theta * 2 / float(samples);
+	float weight = 1e-5;
+	
+	for(float azimuth = WiSpherical.x - pushConstants.theta; azimuth <= WiSpherical.x + pushConstants.theta; azimuth += dtheta)
+	{
+		for(float zenith = WiSpherical.y - pushConstants.theta; zenith <= WiSpherical.y + pushConstants.theta; zenith += dtheta)
+		{
+			vec3 dir = SphericalToCartesian(vec2(azimuth, zenith));
+			if(dot(dir, Wi) + cosThetaBias >= cosTheta)
+			{
+				I += texture(environmentMap, dir).xyz;
+										
+				//solidAngle += dtheta * dtheta;
+				weight += 1;
+			}
+		}
+	}
+	
+	uvec2 size = imageSize(dstLayer);
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(dstLayer, ivec3(gl_GlobalInvocationID), vec4(I, 1.0));
+	if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(dstLayer, ivec3(gl_GlobalInvocationID), vec4(I / weight, 1.0));
+}

@@ -1,0 +1,89 @@
+#version 450 core
+layout(binding = 0) uniform sampler2D lobeSolidAngle;
+layout(binding = 1) writeonly uniform image2D normalDistribution;
+
+#include "../common/lib.glsl"
+
+const float pi = 3.141592;
+
+vec2 CartesianToSpherical(vec3 dir)
+{
+	return vec2(atan(dir.y, dir.x), asin(dir.z));
+}
+vec3 SphericalToCartesian(vec2 dir)
+{	
+	return vec3(cos(dir.x) * cos(dir.y), sin(dir.x) * cos(dir.y), sin(dir.y));
+}
+
+layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+void main()
+{
+	uvec2 size = imageSize(normalDistribution);
+	vec2 texCoords = vec2(gl_GlobalInvocationID.xy) / vec2(size);
+
+	float roughness = texCoords.x + 1e-5;
+	float NdotWo = texCoords.y + 1e-5;
+	
+	vec3 N = vec3(0, 0, 1);
+	vec3 Wo = vec3(sin(acos(NdotWo)), 0, NdotWo);
+	vec3 R = vec3(-Wo.x, -Wo.y, Wo.z);
+
+	vec2 RSpherical = CartesianToSpherical(R);
+	
+	float theta = texture(lobeSolidAngle, texCoords).x + 1e-4;
+	float cosTheta = cos(theta);
+	
+	
+	float D = 0;
+	float G = 0;       
+	float F = 0;
+	float NdotWi = 0;
+	
+	float BRDF = 0;
+	
+	float lowerBoundAzimuth = RSpherical.x - theta;
+    float upperBoundAzimuth = RSpherical.x + theta;
+	
+	float azimuthRange = upperBoundAzimuth - lowerBoundAzimuth;
+	
+    float lowerBoundZenith =  RSpherical.y - theta;
+    float upperBoundZenith =  RSpherical.y + theta;
+
+	float zenithRange = upperBoundZenith - lowerBoundZenith;
+	
+	uint samples = 2048;
+	float dazimuth = azimuthRange / float(samples);
+	float dzenith = zenithRange / float(samples);
+	
+	
+	for(float azimuth = lowerBoundAzimuth; azimuth < upperBoundAzimuth; azimuth += dazimuth)
+	{
+		for(float zenith = lowerBoundZenith; zenith < upperBoundZenith; zenith += dzenith)
+		{
+			vec3 Wi = SphericalToCartesian(vec2(azimuth, zenith));
+			float dw = cos(zenith) * dzenith * dazimuth;
+			
+			//if(dot(Wi, R) >= cosTheta)
+			if(true)
+			{
+				vec3 H = normalize(Wi + Wo);
+			
+				//D += DistributionGGX(N, H, roughness) * dot(N, H) * dw;
+				//G += GeometrySmith(N, Wo, Wi, roughness) * dw;
+				//F += FresnelSchlickGeneric(dot(H, Wo)) * dw;
+				//NdotWi += dot(N, Wi) * dw;
+				
+				float numerator = DistributionGGX(N, H, roughness) * GeometrySmith(N, Wo, Wi, roughness) * FresnelSchlickGeneric(dot(H, Wo));
+				float denominator = dot(N, Wi);
+				BRDF += numerator / denominator * dw;
+				
+			}
+		}
+	}
+	
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(D, G, F, NdotWi));
+	if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(BRDF, 0, 0, 0));
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(D, G, F, NdotWi) / weight);
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(weight / 4.0, G, F, NdotWi) / weight);
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(theta, 0, 0, 0));
+}

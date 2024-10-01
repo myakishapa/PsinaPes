@@ -1,0 +1,67 @@
+#version 450 core
+layout(binding = 0) uniform sampler2D lobeSolidAngle;
+layout(binding = 1) writeonly uniform image2D normalDistribution;
+
+#include "../common/lib.glsl"
+
+const float pi = 3.141592;
+
+vec2 CartesianToSpherical(vec3 dir)
+{
+	return vec2(atan(dir.y, dir.x), asin(dir.z));
+}
+vec3 SphericalToCartesian(vec2 dir)
+{	
+	return vec3(cos(dir.x) * cos(dir.y), sin(dir.x) * cos(dir.y), sin(dir.y));
+}
+
+layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+void main()
+{
+	uvec2 size = imageSize(normalDistribution);
+	vec2 texCoords = vec2(gl_GlobalInvocationID.xy) / vec2(size);
+
+	float roughness = texCoords.x;
+	float NdotWo = texCoords.y;
+	
+	vec3 N = vec3(0, 0, 1);
+	vec3 Wo = vec3(sin(acos(NdotWo)), 0, NdotWo);
+	vec3 R = vec3(-Wo.x, -Wo.y, Wo.z);
+
+	vec2 RSpherical = CartesianToSpherical(R);
+	
+	float theta = texture(lobeSolidAngle, texCoords).x + 1e-4;
+	float cosTheta = cos(theta);
+	
+	uint samples = 512;
+	float dtheta = theta * 2 / float(samples);
+	
+	float weight = 1e-5;
+	float D = 0;
+	float G = 0;       
+	float F = 0;
+	float NdotWi = 0;
+	
+	for(float azimuth = RSpherical.x - theta; azimuth <= RSpherical.x + theta; azimuth += dtheta)
+	{
+		for(float zenith = RSpherical.y - theta; zenith <= RSpherical.y + theta; zenith += dtheta)
+		{
+			vec3 Wi = SphericalToCartesian(vec2(azimuth, zenith));
+			if(dot(Wi, R) >= cosTheta)
+			{
+				vec3 H = normalize(Wi + Wo);
+			
+				D += DistributionGGX(N, H, roughness);
+				G += GeometrySmith(N, Wo, Wi, roughness);
+				F += FresnelSchlickGeneric(dot(H, Wo));
+				NdotWi += dot(N, Wi);
+				
+				weight += 1;
+			}
+		}
+	}
+	
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(D, G, F, NdotWi) / weight);
+	if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(weight / 4.0, G, F, NdotWi) / weight);
+	//if(gl_GlobalInvocationID.x < size.x && gl_GlobalInvocationID.y < size.y) imageStore(normalDistribution, ivec2(gl_GlobalInvocationID), vec4(theta, 0, 0, 0));
+}
