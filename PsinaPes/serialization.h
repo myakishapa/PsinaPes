@@ -57,11 +57,9 @@ struct HvValueConvert
     }
 };
 
-std::uint64_t HvArrayType()
+constexpr std::uint64_t HvArrayType()
 {
-    static std::hash<std::string> hasher;
-    return hasher("hv_array");
-
+    return Hash("hv_array");
 }
 
 std::uint64_t HashCombine(std::uint64_t f, std::uint64_t s)
