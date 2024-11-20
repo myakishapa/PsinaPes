@@ -3649,7 +3649,7 @@ struct Swapchain
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         createInfo.presentMode = presentMode;
         createInfo.clipped = VK_TRUE;
-
+                                                                                                                
         auto result = vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain);
         if (result != VK_SUCCESS)
         {
@@ -4315,7 +4315,7 @@ int main()
     etcEquiHdr.LoadFromFile("textures/etc/hh.hdr", true);
     StoreTexture(tree["etc/srcHdr"_tp], etcEquiHdr);
 
-    Scene sphere;
+    Scene sphere; 
     sphere.LoadFromFile("models/sphere.fbx");
     //StoreMesh(tree["sphere"], sphere.meshes[0]);
 
@@ -4645,8 +4645,16 @@ int main()
     fullscreenPassSets.Update(Describe(colorImageViews[0]), Describe(swapchain));
 
 
-    //Image sinhTanhIntegrated = LoadRaw("myakishapapes.raw", glm::uvec3(64, 64, 1));
-    //Image specularLobeAngleCPU = LoadRaw("sla_middle.raw", glm::uvec3(64, 64, 1), 2);
+    Image sinhTanhIntegrated200 = LoadRaw("test200.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated400 = LoadRaw("test400.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated800 = LoadRaw("test800.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated1200 = LoadRaw("test1200.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated1600 = LoadRaw("test1600.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated2000 = LoadRaw("test2000.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated4000 = LoadRaw("test4000.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated20000 = LoadRaw("test20000.raw", glm::uvec3(64, 64, 1));
+
+    Image specularLobeAngleCPU = LoadRaw("sla_middle.raw", glm::uvec3(64, 64, 1), 2);
     //Image specularLobeAngleCPU2 = LoadRaw("sla_middle.raw", glm::uvec3(256, 256, 256), 2);
 
     while (!glfwWindowShouldClose(window))
