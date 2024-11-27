@@ -4576,8 +4576,30 @@ int main()
     cbrTransformable.SetScale(glm::vec3(1000, 1000, 1000));
     MeshInstance cubemapMesh(sphereMeshDescriptor, cbrMat.FullDescriptor(), cbrSets);
         
+
+    Image sinhTanhIntegrated200 = LoadRaw("test200.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated400 = LoadRaw("test400.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated800 = LoadRaw("test800.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated1200 = LoadRaw("test1200.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated1600 = LoadRaw("test1600.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated2000 = LoadRaw("test2000.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated4000 = LoadRaw("test4000.raw", glm::uvec3(64, 64, 1));
+    Image sinhTanhIntegrated20000 = LoadRaw("test20000.raw", glm::uvec3(64, 64, 1));
+
+    ImageView integratedBRDF(sinhTanhIntegrated20000);
+
+    Image specularLobeAngleCPU = LoadRaw("sla_middle.raw", glm::uvec3(64, 64, 1), 2);
+    //Image specularLobeAngleCPU2 = LoadRaw("sla_middle.raw", glm::uvec3(256, 256, 256), 2);
+    ImageView lobeAngles(specularLobeAngleCPU);
+
+    TempCommandBuffer myakishIBLtransition;
+
+    sinhTanhIntegrated20000.TransitionLayout(myakishIBLtransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    specularLobeAngleCPU.TransitionLayout(myakishIBLtransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             
-    sets.Update(Describe(uniformBuffer), Describe(baseColorTextureReference), Describe(normalTextureReference), Describe(metallicTextureReference), Describe(roughnessTextureReference), Describe(ambientOcclusionTextureReference), Describe(irradianceMapView, cubemapSampler), Describe(specularEnvView, cubemapSampler), Describe(lobeSolidAngleView, cubemapSampler), Describe(averagedBRDFview, cubemapSampler));
+    myakishIBLtransition.Execute();
+
+    sets.Update(Describe(uniformBuffer), Describe(baseColorTextureReference), Describe(normalTextureReference), Describe(metallicTextureReference), Describe(roughnessTextureReference), Describe(ambientOcclusionTextureReference), Describe(irradianceMapView, cubemapSampler), Describe(specularEnvView, cubemapSampler), Describe(lobeAngles, cubemapSampler), Describe(integratedBRDF, cubemapSampler));
                 
     AssetReference<Material> lsrMaterial(assetManager, AssetDescriptor("huinya.ab", "lsr/mat"_tp), "mat"_tp);
 
@@ -4644,18 +4666,6 @@ int main()
 
     fullscreenPassSets.Update(Describe(colorImageViews[0]), Describe(swapchain));
 
-
-    Image sinhTanhIntegrated200 = LoadRaw("test200.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated400 = LoadRaw("test400.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated800 = LoadRaw("test800.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated1200 = LoadRaw("test1200.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated1600 = LoadRaw("test1600.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated2000 = LoadRaw("test2000.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated4000 = LoadRaw("test4000.raw", glm::uvec3(64, 64, 1));
-    Image sinhTanhIntegrated20000 = LoadRaw("test20000.raw", glm::uvec3(64, 64, 1));
-
-    Image specularLobeAngleCPU = LoadRaw("sla_middle.raw", glm::uvec3(64, 64, 1), 2);
-    //Image specularLobeAngleCPU2 = LoadRaw("sla_middle.raw", glm::uvec3(256, 256, 256), 2);
 
     while (!glfwWindowShouldClose(window))
     {                   

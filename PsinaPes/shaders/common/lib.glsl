@@ -198,3 +198,43 @@ vec3 MyakishIndirectLighting(vec3 Wo, vec3 N, vec3 F0, float roughness, float ao
 	//return numerator / denominator;
 	//return vec3(mipLevel / float(textureQueryLevels(radiantIntensity)), lobeAngle, 0);
 }
+
+
+vec3 MyakishIndirectLighting2(vec3 Wo, vec3 N, vec3 F0, float roughness, float ao, sampler2D lobeAngles, sampler2D integratedBRDF, samplerCube integratedRadiance, out vec4 debug2, out vec4 debug3, out vec4 debug4, out vec4 debug5, out vec4 debug6, out vec4 debug7)
+{
+	float NdotWo = dot(N, Wo);
+	
+	vec2 angles = texture(lobeAngles, vec2(roughness, NdotWo)).xy;
+	float elevation = angles.x;
+	float angle = angles.y;
+	
+	vec3 NcrossWo = normalize(cross(Wo, N));
+	
+	vec3 base = cross(NcrossWo, N);
+	
+	vec3 radianceSample = cos(elevation) * base + sin(elevation) * N;
+	
+	float mipLevel = LobeAngleToRadiantIntensityMipLevel(angle, textureQueryLevels(integratedRadiance));
+	
+	vec3 radiance = textureLod(integratedRadiance, radianceSample, mipLevel).rgb;    
+	
+	float preintegratedBRDF = texture(integratedBRDF, vec2(roughness, NdotWo)).x;
+	
+		
+	vec3 BRDF = F0 + preintegratedBRDF * (1.0 - F0);
+	
+	vec3 specular = radiance * BRDF;
+	
+	vec3 ambient = specular * ao;
+	
+	debug2 = vec4(BRDF, 0);
+	debug3 = vec4(elevation, angle, 0, 0);
+	debug4 = vec4(radianceSample, 0);
+	debug5 = vec4(radiance, 0);
+	debug6 = vec4(specular, 0);
+	debug7 = vec4(preintegratedBRDF, 0, 0, 0);
+	
+	return ambient;
+	//return numerator / denominator;
+	//return vec3(mipLevel / float(textureQueryLevels(radiantIntensity)), lobeAngle, 0);
+}

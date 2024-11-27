@@ -34,9 +34,10 @@ layout(binding = 4) uniform sampler2D roughnessMap;
 layout(binding = 5) uniform sampler2D aoMap;
 
 layout(binding = 6) uniform samplerCube irradianceMap;
-layout(binding = 7) uniform samplerCube radiantIntensity;
-layout(binding = 8) uniform sampler2D lobeSolidAngle;
-layout(binding = 9) uniform sampler2D averagedBRDF;
+
+layout(binding = 7) uniform samplerCube integratedRadiance;
+layout(binding = 8) uniform sampler2D lobeAngles;
+layout(binding = 9) uniform sampler2D integratedBRDF;
  
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 debugColor1;
@@ -104,7 +105,7 @@ void main()
 		Lo += mix(LoDry, TransparentBTDF(-woLower, LoLower, -vertexNormal, waterF0), wetLevel);
     }   
 	
-	vec3 waterIndirect = MyakishIndirectLighting(V, vertexNormal, waterF0, waterRoughness, ao, lobeSolidAngle, averagedBRDF, radiantIntensity, debugColor2, debugColor3, debugColor4, debugColor5, debugColor6, debugColor7);
+	vec3 waterIndirect = MyakishIndirectLighting2(V, vertexNormal, waterF0, waterRoughness, ao, lobeSolidAngle, averagedBRDF, radiantIntensity, debugColor2, debugColor3, debugColor4, debugColor5, debugColor6, debugColor7);
     vec3 color = Lo + waterIndirect * wetLevel;
     //vec3 color = waterIndirect;
 
