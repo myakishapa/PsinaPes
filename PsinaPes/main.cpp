@@ -1803,6 +1803,15 @@ struct Image
     std::uint32_t arrayLayers;
     std::uint32_t mipLevels;
 
+    void Destroy()
+    {
+        if (image != VK_NULL_HANDLE) vmaDestroyImage(allocator, image, allocation);
+        image = VK_NULL_HANDLE;
+        allocation = VK_NULL_HANDLE;
+    }
+
+public:
+
     struct CreateInfo
     {
         glm::uvec3 size;
@@ -2001,9 +2010,28 @@ struct Image
         return WholeImage();
     }
 
+    Image& operator=(const Image&) = delete;
+    Image& operator=(Image&& rhs) noexcept
+    {
+        Destroy();
+
+        image = rhs.image;
+        allocation = rhs.allocation;
+
+        size = rhs.size;
+        layout = rhs.layout;
+        format = rhs.format;
+        imageType = rhs.imageType;
+        arrayLayers = rhs.arrayLayers;
+        mipLevels = rhs.mipLevels;
+
+        rhs.image = VK_NULL_HANDLE;
+        rhs.allocation = VK_NULL_HANDLE;
+    }
+
     ~Image()
     {
-        if(image != VK_NULL_HANDLE) vmaDestroyImage(allocator, image, allocation);
+        Destroy();
     }
 };
 
@@ -4219,6 +4247,8 @@ Image LoadRaw(fs::path file, glm::uvec3 size, std::uint64_t components = 1)
     ci.format = formats[components - 1];
     ci.mipLevels = 1;
     ci.imageType = size.z == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D;
+
+    ci.imageUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
     Image image(ci);
 

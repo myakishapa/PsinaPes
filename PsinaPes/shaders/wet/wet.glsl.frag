@@ -105,7 +105,7 @@ void main()
 		Lo += mix(LoDry, TransparentBTDF(-woLower, LoLower, -vertexNormal, waterF0), wetLevel);
     }   
 	
-	vec3 waterIndirect = MyakishIndirectLighting2(V, vertexNormal, waterF0, waterRoughness, ao, lobeSolidAngle, averagedBRDF, radiantIntensity, debugColor2, debugColor3, debugColor4, debugColor5, debugColor6, debugColor7);
+	vec3 waterIndirect = MyakishIndirectLighting2(V, vertexNormal, waterF0, waterRoughness, ao, lobeAngles, integratedBRDF, integratedRadiance, debugColor2, debugColor3, debugColor4, debugColor5, debugColor6, debugColor7);
     vec3 color = Lo + waterIndirect * wetLevel;
     //vec3 color = waterIndirect;
 
