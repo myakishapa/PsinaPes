@@ -173,17 +173,15 @@ std::vector<Semaphore> renderFinishedSemaphores;
 std::vector<Fence> inFlightFences;
 uint32_t currentFrame = 0;
 
-GLFWwindow* window;
-
 AssetManager assetManager;
 
 float speed = 6.f;
 float rotationSpeed = 0.001f;
 std::chrono::steady_clock::time_point lastTime;
 
-glm::dvec2 lastMousePos;
-
-bool framebufferResized = false;
+float indirectMultiplier = 1.f;
+float indirectMultiplierStep = 0.1f;
+float indirectMultiplierStep2 = 1.f;
 
 enum class AxisBinding
 {
@@ -1534,6 +1532,11 @@ public:
             throw std::runtime_error("failed to create graphics pipeline!");
         }
     }
+
+    void Bind(VkCommandBuffer commandBuffer)
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    }
 };
 
 template<>
@@ -2444,6 +2447,7 @@ struct Drawable
     virtual std::size_t IndexCount() = 0;
     virtual VkPipelineLayout GetLayout() = 0;
 };
+
 struct MeshInstance : public Drawable
 {
     AssetReference<HMesh> mesh;
@@ -2797,10 +2801,7 @@ struct Scene
     }
 };
 
-void initWindow();
-
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+static void key_callback(int key, int scancode, int action, int mods);
 
 void initVulkan();
 
@@ -2812,7 +2813,6 @@ void createInstance();
 void pickPhysicalDevice();
 void createLogicalDevice();
 
-void hinput();
 void createSyncObjects();
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
@@ -2829,23 +2829,9 @@ void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 void setupDebugMessenger();
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
 
-void initWindow()
-{
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-    
-    window = glfwCreateWindow(WIDTH, HEIGHT, "myakish", nullptr, nullptr);
-    
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-}
-
 bool hTank = false;
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
-{
-    framebufferResized = true;
-}
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+
+static void key_callback(int key, int scancode, int action, int mods)
 {
     if (key == GLFW_KEY_R && action == GLFW_PRESS)
     {
@@ -2853,6 +2839,28 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         //camera.UpdateProjection(glm::uvec2(swapChainExtent.width, swapChainExtent.height));
     }
     if (key == GLFW_KEY_V && action == GLFW_PRESS) hTank = !hTank;
+
+    if (key == GLFW_KEY_T && action == GLFW_PRESS)
+    {
+        indirectMultiplier += indirectMultiplierStep;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+    if (key == GLFW_KEY_G && action == GLFW_PRESS)
+    {
+        indirectMultiplier -= indirectMultiplierStep;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+
+    if (key == GLFW_KEY_Y && action == GLFW_PRESS)
+    {
+        indirectMultiplier += indirectMultiplierStep2;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+    if (key == GLFW_KEY_H && action == GLFW_PRESS)
+    {
+        indirectMultiplier -= indirectMultiplierStep2;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
 }
 
 void initVulkan()
@@ -2902,7 +2910,6 @@ void initVulkan()
     camera.UpdateProjection(glm::uvec2(800, 600));
     lastTime = std::chrono::high_resolution_clock::now();
 
-    glfwGetCursorPos(window, &lastMousePos.x, &lastMousePos.y);
 }
 
 /*void cleanupSwapChain()
@@ -2946,18 +2953,10 @@ void cleanup()
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 
-    glfwDestroyWindow(window);
 
     glfwTerminate();
 }
 
-void createSurface()
-{
-    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to create window surface!");
-    }
-}
 
 void createInstance()
 {
@@ -3095,31 +3094,6 @@ void createLogicalDevice()
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-void hinput()
-{
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
-    lastTime = currentTime;
-
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.AddOffset(glm::vec4(1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.AddOffset(glm::vec4(-1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, -1.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 1.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, 1.f, 0.f) * speed * deltaTime, false);
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, -1.f, 0.f) * speed * deltaTime, false);
-    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) camera.hdebug();
-    
-    glm::dvec2 mousePos;
-    glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
-    glm::dvec2 delta = mousePos - lastMousePos;
-    lastMousePos = mousePos;
-    camera.AddRotation(glm::vec3(0.f, -delta.y, -delta.x) * rotationSpeed);
-}
-
 void createSyncObjects()
 {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -3152,28 +3126,7 @@ VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& avai
 
     return VK_PRESENT_MODE_FIFO_KHR;
 }
-VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
-{
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-    {
-        return capabilities.currentExtent;
-    }
-    else
-    {
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
 
-        VkExtent2D actualExtent = {
-            static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height)
-        };
-
-        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-
-        return actualExtent;
-    }
-}
 
 SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device)
 {
@@ -3564,54 +3517,213 @@ struct ComputePushConstants
     float deltaTime;
 };
 
+template<typename Type>
+concept Enum = std::is_enum_v<Type>;
+
+template<Enum Type>
+constexpr Type operator|(Type lhs, Type rhs)
+{
+    return static_cast<Type>(std::to_underlying(lhs) | std::to_underlying(rhs));
+}
+template<Enum Type>
+constexpr Type operator&(Type lhs, Type rhs)
+{
+    return static_cast<Type>(std::to_underlying(lhs) & std::to_underlying(rhs));
+}
+
 class Window
 {
 public:
 
+    enum class Flags
+    {
+        EMPTY = 0x0,
+        RESIZABLE = 0x1,
+        VISIBLE = 0x2,
+        DECORATED = 0x4,
+        FOCUSED = 0x8,
+        AUTO_ICONIFY = 0x10,
+        FLOATING = 0x20,
+        MAXIMIZED = 0x40,
+        CENTER_CURSOR = 0x80,
+        //TRANSPARENT = 0x100,
+        FOCUS_ON_SHOW = 0x200,
+        SCALE_TO_MONITOR = 0x400,
+        //SCALE_FRAMEBUFFER = 0x800,
+        //MOUSE_PASSTHROUGH = 0x1000,
+    };
+
+    using enum Flags;
+    static constexpr Flags DefaultFlags = FOCUSED | VISIBLE | DECORATED | RESIZABLE | AUTO_ICONIFY | CENTER_CURSOR | FOCUS_ON_SHOW/* | SCALE_FRAMEBUFFER*/;
+
+    static constexpr int DontCare = GLFW_DONT_CARE;
+
     struct CreateInfo
     {
-        bool resizable = true;
-        bool initiallyVisible = true;
-        bool initiallyFocused = true;
-        bool autoIconify = true;
-        bool floating = false;
-        bool maximized = false;
-        bool centerCursor = true;
-        bool transparent = false;
-        bool focusOnShow = true;
-        bool scaleToMonitor = false;
-        bool scaleFramebuffer = true;
-        bool mousePassthrough = false;
+        Flags flags = DefaultFlags;
 
-        glm::uvec2 initialPosition = glm::uvec2(0, 0);
+        glm::ivec2 size = glm::ivec2(WIDTH, HEIGHT);
+
+        int refreshRate = DontCare;
+
+        std::string_view title = "Vulkan";
     };
+
+    using FramebufferSizeCallback = void(glm::ivec2);
+    using KeyCallback = void(int, int, int, int);
 
 private:
 
     GLFWwindow *window;
 
-    glm::uvec2 size;
-
-
-    void Create()
+    std::function<FramebufferSizeCallback> framebufferCallback;
+    static void GenericFramebufferSizeCallback(GLFWwindow* window, int width, int height)
     {
-        
+        auto raiiWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+        glm::ivec2 size(width, height);
+
+        raiiWindow->framebufferCallback(size);
+    }
+
+    std::function<KeyCallback> keyCallback;
+    static void GenericKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+    {
+        auto raiiWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+
+        raiiWindow->keyCallback(key, scancode, action, mods);
     }
 
 public:
 
-    Window() : window(nullptr)
+    Window(CreateInfo ci = {}) : window(nullptr)
     {
+        glfwDefaultWindowHints();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        glfwSetKeyCallback(window, key_callback);
-        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+        glfwWindowHint(GLFW_RESIZABLE, (ci.flags & RESIZABLE) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_VISIBLE, (ci.flags & VISIBLE) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_DECORATED, (ci.flags & DECORATED) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUSED, (ci.flags & FOCUSED) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_AUTO_ICONIFY, (ci.flags & AUTO_ICONIFY) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_FLOATING, (ci.flags & FLOATING) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_MAXIMIZED, (ci.flags & MAXIMIZED) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_CENTER_CURSOR, (ci.flags & CENTER_CURSOR) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUS_ON_SHOW, (ci.flags & FOCUS_ON_SHOW) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_SCALE_TO_MONITOR, (ci.flags & SCALE_TO_MONITOR) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        //glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, (ci.flags & SCALE_FRAMEBUFFER) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        //glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, (ci.flags & MOUSE_PASSTHROUGH) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+
+        glfwWindowHint(GLFW_REFRESH_RATE, ci.refreshRate);
+
+        window = glfwCreateWindow(ci.size.x, ci.size.y, ci.title.data(), nullptr, nullptr);
+
+        glfwSetWindowUserPointer(window, this);
+
+        glfwSetFramebufferSizeCallback(window, GenericFramebufferSizeCallback);
     }
+
+    ~Window()
+    {
+        glfwDestroyWindow(window);
+    }
+
+    glm::ivec2 GetWindowSize() const
+    {
+        glm::ivec2 size{};
+        glfwGetWindowSize(window, &size.x, &size.y);
+        return size;
+    }
+
+    glm::ivec2 GetFramebufferSize() const
+    {
+        glm::ivec2 size{};
+        glfwGetFramebufferSize(window, &size.x, &size.y);
+        return size;
+    }
+
+    bool ShouldClose() const
+    {
+        return glfwWindowShouldClose(window);
+    }
+
+    GLFWwindow* Handle() const
+    {
+        return window;
+    }
+
+    glm::dvec2 GetCursorPosition() const
+    {
+        glm::dvec2 position{};
+        glfwGetCursorPos(window, &position.x, &position.y);
+        return position;
+    }
+
+    template<typename F>
+    void BindFramebufferSizeCallback(F&& function)
+    {
+        framebufferCallback = std::forward<F>(function);
+    }
+    template<typename F>
+    void BindKeyCallback(F&& function)
+    {
+        keyCallback = std::forward<F>(function);
+    }
+
 };
+
+void createSurface(const Window& window)
+{
+    if (glfwCreateWindowSurface(instance, window.Handle(), nullptr, &surface) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create window surface!");
+    }
+}
+
+void hinput(const Window& window)
+{
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
+    lastTime = currentTime;
+
+    if (glfwGetKey(window.Handle(), GLFW_KEY_W) == GLFW_PRESS) camera.AddOffset(glm::vec4(1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
+    if (glfwGetKey(window.Handle(), GLFW_KEY_S) == GLFW_PRESS) camera.AddOffset(glm::vec4(-1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
+    if (glfwGetKey(window.Handle(), GLFW_KEY_A) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, -1.f, 0.f, 0.f) * speed * deltaTime);
+    if (glfwGetKey(window.Handle(), GLFW_KEY_D) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 1.f, 0.f, 0.f) * speed * deltaTime);
+    if (glfwGetKey(window.Handle(), GLFW_KEY_E) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, 1.f, 0.f) * speed * deltaTime, false);
+    if (glfwGetKey(window.Handle(), GLFW_KEY_Q) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, -1.f, 0.f) * speed * deltaTime, false);
+    if (glfwGetKey(window.Handle(), GLFW_KEY_F) == GLFW_PRESS) camera.hdebug();
+
+    static glm::dvec2 lastMousePos = window.GetCursorPosition();
+
+    glm::dvec2 mousePos = window.GetCursorPosition();
+    glm::dvec2 delta = mousePos - lastMousePos;
+    lastMousePos = mousePos;
+
+    camera.AddRotation(glm::vec3(0.f, -delta.y, -delta.x) * rotationSpeed);
+}
+VkExtent2D chooseSwapExtent(const Window& window, const VkSurfaceCapabilitiesKHR& capabilities)
+{
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+    {
+        return capabilities.currentExtent;
+    }
+    else
+    {
+        auto size = window.GetFramebufferSize();
+
+        VkExtent2D actualExtent = Extent(size);
+
+        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+        return actualExtent;
+    }
+}
 
 struct Swapchain
 {
@@ -3682,8 +3794,6 @@ struct Swapchain
         if (result != VK_SUCCESS)
         {
             //throw std::runtime_error("failed to create swap chain!");
-            std::cout << "piska"
-                ;
         }
 
         vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
@@ -3732,13 +3842,12 @@ struct Swapchain
         }
     }
 
-    void Recreate()
+    void Recreate(const Window& window)
     {
-        int width = 0, height = 0;
-        glfwGetFramebufferSize(window, &width, &height);
-        while (width == 0 || height == 0)
+        auto size = window.GetFramebufferSize();
+        while (size.x == 0 || size.y == 0)
         {
-            glfwGetFramebufferSize(window, &width, &height);
+            size = window.GetFramebufferSize();
             glfwWaitEvents();
         }
 
@@ -3748,13 +3857,13 @@ struct Swapchain
         //recreateCallback();
     }
 
-    std::uint32_t AcquireNextImage(VkSemaphore semaphore)
+    std::uint32_t AcquireNextImage(VkSemaphore semaphore, const Window& window)
     {
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphore, VK_NULL_HANDLE, &imageIndex);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
-            Recreate();
+            Recreate(window);
         else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
             throw std::runtime_error("failed to acquire swap chain image!");
 
@@ -3889,6 +3998,7 @@ struct PushConstantsPBR
 {
     std::uint64_t lightsBuffer;
     int count;
+    float indirectMultiplier;
 };
 
 struct EquiToCubeUBO
@@ -4161,8 +4271,10 @@ void RadiantIntensity(Image& environment, Image& dst)
         vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipelineLayout, 0, 1, set.descriptorSets.data(), 0, nullptr);
         auto levelSize = glm::max(dst.MipLevelSize(level), glm::uvec3(32, 32, 1));
 
+        const float maxTheta = 1.26;
+
         float h = (float)level / float(dst.mipLevels - 1);
-        float theta = h * std::numbers::pi / 2.f + 1e-4;
+        float theta = h * maxTheta + 1e-4;
         vkCmdPushConstants(cmdBuffer, pipeline->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &theta);
 
         vkCmdDispatch(cmdBuffer, levelSize.x / 32, levelSize.y / 32, 6);
@@ -4265,25 +4377,37 @@ Image LoadRaw(fs::path file, glm::uvec3 size, std::uint64_t components = 1)
     return image;
 }
 
+struct GraphPushConstants
+{
+    std::uint32_t resolution;
+    float textureScale;
+};
+
 int main()
 {
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return x * (8.0 - x); }, 0, 8, 2'000'000.0) << "    " << IntegrateZhopa() << "\n\n\n\n";
 
-
+    
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, -hpi, hpi, 2'000'000.0) << "\n\n\n\n";
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, 0, 8) << "\n\n\n\n";
 
-
+    
     volkInitialize();
     
     glfwInit();
 
-    initWindow();
+    Window window;
+
+    glfwSetInputMode(window.Handle(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(window.Handle(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+
+    window.BindKeyCallback(key_callback);
+
     initVulkan();
          
     std::array bindings = { Vertex::getBindingDescription() };
     std::array attributes = { Vertex::getAttributeDescriptions() };
-     
+
     //Skybox skybox;
 
     /*std::array names = {"apa"s, "hui"s};
@@ -4406,6 +4530,14 @@ int main()
     std::vector<ShaderStageDescriptor> stagesHuiPiska = { {.stage = VK_SHADER_STAGE_VERTEX_BIT, .source = "./shaders/wet/wet.spv.vert" }, {.stage = VK_SHADER_STAGE_FRAGMENT_BIT, .source = "./shaders/wet/wet.spv.frag" } };
     StoreMaterial(tree["pbr/mat"_tp], stagesHuiPiska, materialCreateInfoPiska, attributes, bindings);
 
+    std::array<VkVertexInputBindingDescription, 0> nullBindings;
+    std::array<VkVertexInputAttributeDescription, 0> nullAttributes;
+
+    Material::PipelineCreateInfo materialCreateInfoGraph;
+    materialCreateInfoGraph.rasterization.cullMode = VK_CULL_MODE_NONE;
+    std::vector<ShaderStageDescriptor> stagesGraph = { {.stage = VK_SHADER_STAGE_VERTEX_BIT, .source = "./shaders/textureGraph/graph.spv.vert" }, {.stage = VK_SHADER_STAGE_FRAGMENT_BIT, .source = "./shaders/textureGraph/graph.spv.frag" } };
+    StoreMaterial(tree["graph/mat"_tp], stagesGraph, materialCreateInfoGraph, nullAttributes, nullBindings);
+
     Material::PipelineCreateInfo materialCreateEtc;
     materialCreateEtc.depthStencil.depthTestEnable = VK_FALSE;
     std::vector<ShaderStageDescriptor> stagesEtc = { {.stage = VK_SHADER_STAGE_VERTEX_BIT, .source = "./shaders/equiToCube/etc.spv.vert" }, {.stage = VK_SHADER_STAGE_FRAGMENT_BIT, .source = "./shaders/equiToCube/etc.spv.frag" }, {.stage = VK_SHADER_STAGE_GEOMETRY_BIT, .source = "./shaders/equiToCube/etc.spv.geom" } };
@@ -4525,31 +4657,9 @@ int main()
     brdfLUTci.size = glm::uvec3(256, 256, 1);
     brdfLUTci.format = VK_FORMAT_R32G32_SFLOAT;
 
-    Image brdfLUT(brdfLUTci);
-    ImageView brdfLUTview(brdfLUT.WholeImage());
-    ComputeBRDFLUT(brdfLUT);
-
     brdfLUTci.format = VK_FORMAT_R32_SFLOAT;
 
-    Image lobeSolidAngle(brdfLUTci);
-    ImageView lobeSolidAngleView(lobeSolidAngle.WholeImage());
-    
-    SpecularLobeSolidAnglePushConstants specularLobeSolidAnglePushConstants;
-    specularLobeSolidAnglePushConstants.thresholdRoughness0 = 1e-2f;
-    specularLobeSolidAnglePushConstants.thresholdRoughness1 = 1e-6f;
-    specularLobeSolidAnglePushConstants.F0 = glm::vec3(0.04f);
-    SpecularLobeSolidAngle(lobeSolidAngle, specularLobeSolidAnglePushConstants);
-
-    TempCommandBuffer specularLobeTransition;
-    lobeSolidAngle.TransitionLayout(specularLobeTransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    specularLobeTransition.ExecuteAndReset();
-
     brdfLUTci.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    Image averagedBRDF(brdfLUTci);
-    ImageView averagedBRDFview(averagedBRDF.WholeImage());
-    AveragedBRDF(averagedBRDF, lobeSolidAngle);
-    averagedBRDF.TransitionLayout(specularLobeTransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    specularLobeTransition.Execute();
 
    // RenderEquirectangularToCubemap(etcSrcTex->image, cubemap);
     EquirectangularToCubemapCompute(etcSrcTex->image, environmentMap);
@@ -4558,11 +4668,11 @@ int main()
     TempCommandBuffer cmd;
      
     environmentMap.GenerateMipMapChain(cmd, 0, environmentMap.mipLevels - 1);
-    brdfLUT.TransitionLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     cmd.ExecuteAndReset();
 
     environmentMap.TransitionLayout(cmd.buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     irradianceMap.TransitionLayout(cmd, VK_IMAGE_LAYOUT_GENERAL);
+
     cmd.ExecuteAndReset();
     
     AssetReference<ComputePipeline> diffuseIrradianceCompute(assetManager, AssetInstanceDescriptor{ AssetDescriptor{"huinya.ab", "comp/diffuseIrradiance"_tp}, "mat"_tp });
@@ -4589,7 +4699,7 @@ int main()
     RadiantIntensity(environmentMap, specularEnvironmentMap);
     specularEnvironmentMap.TransitionLayout(cmd, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     cmd.ExecuteAndReset();
-
+    
     AssetReference<Material> cbrMat(assetManager, AssetInstanceDescriptor{ AssetDescriptor{"huinya.ab", "cbr/mat"_tp}, "mat"_tp });
 
     HDescriptorPool cbrPool(cbrMat->setLayouts[0]);
@@ -4616,7 +4726,9 @@ int main()
     Image sinhTanhIntegrated4000 = LoadRaw("test4000.raw", glm::uvec3(64, 64, 1));
     Image sinhTanhIntegrated20000 = LoadRaw("test20000.raw", glm::uvec3(64, 64, 1));
 
-    ImageView integratedBRDF(sinhTanhIntegrated20000);
+    Image trueIntegral = LoadRaw("test20000.raw", glm::uvec3(64, 64, 1), 2);
+
+    ImageView integratedBRDF(trueIntegral);
 
     Image specularLobeAngleCPU = LoadRaw("sla_middle.raw", glm::uvec3(64, 64, 1), 2);
     //Image specularLobeAngleCPU2 = LoadRaw("sla_middle.raw", glm::uvec3(256, 256, 256), 2);
@@ -4624,7 +4736,7 @@ int main()
 
     TempCommandBuffer myakishIBLtransition;
 
-    sinhTanhIntegrated20000.TransitionLayout(myakishIBLtransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    trueIntegral.TransitionLayout(myakishIBLtransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     specularLobeAngleCPU.TransitionLayout(myakishIBLtransition, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             
     myakishIBLtransition.Execute();
@@ -4646,6 +4758,8 @@ int main()
     lsrTransformable.SetScale(glm::vec3(0.05f));
 
     Swapchain swapchain;
+    bool framebufferResized = false;
+    window.BindFramebufferSizeCallback([&](glm::ivec2) { framebufferResized = true; });
 
 
     glm::uvec3 colorImageSize = glm::uvec3(1920, 1080, 1);
@@ -4669,7 +4783,7 @@ int main()
     //ImageView colorImageView(colorImage);
 
 
-    VkFormat depthFormat = findDepthFormat();
+    VkFormat depthFormat = findDepthFormat(); 
     Image::CreateInfo depthImageCI{};
     depthImageCI.size = colorImageSize;
     depthImageCI.format = depthFormat;
@@ -4686,7 +4800,7 @@ int main()
     depthImageTransition.Execute();
 
     RenderPass renderPass(Rect<std::uint32_t>{{0, 0}, Extent(swapchain.extent)}, std::vector(std::from_range, colorImageViews | std::views::transform([](auto& imageView) -> RenderPassAttachment { return RenderPassAttachment(imageView); })), RenderPassAttachment(depthImageView, ClearValue(1.f), VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL));
-
+ 
     
 
     AssetReference<ComputePipeline> fullscreenPassPipeline(assetManager, AssetInstanceDescriptor{ AssetDescriptor{"huinya.ab", "comp/fullscreenPass"_tp}, ""_tp });
@@ -4696,16 +4810,30 @@ int main()
 
     fullscreenPassSets.Update(Describe(colorImageViews[0]), Describe(swapchain));
 
+    
 
-    while (!glfwWindowShouldClose(window))
+    AssetReference<Material> graphMaterial(assetManager, AssetDescriptor("huinya.ab", "graph/mat"_tp), "mat"_tp);
+
+    HDescriptorPool graphPool(graphMaterial->setLayouts[0]);
+    HDescriptorSets graphSets(graphPool);
+
+    UniformBuffer graphUniformBuffer(sizeof(UniformBufferPBR));
+
+    graphSets.Update(Describe(graphUniformBuffer), Describe(lobeAngles, cubemapSampler));
+
+    Transformable graphTransformable;
+
+    std::uint32_t graphResolution = 32;
+
+    while (!window.ShouldClose())
     {                   
         glfwPollEvents();
         
         vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
         
-        uint32_t imageIndex = swapchain.AcquireNextImage(imageAvailableSemaphores[currentFrame]);
+        uint32_t imageIndex = swapchain.AcquireNextImage(imageAvailableSemaphores[currentFrame], window);
 
-        hinput();
+        hinput(window);
 
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
@@ -4756,6 +4884,7 @@ int main()
                 scissor.extent = swapchain.extent;
                 vkCmdSetScissor(commandBuffers[currentFrame].buffer, 0, 1, &scissor);
 
+                //main UBO
                 {
                     UniformBufferPBR ubo{};
                     ubo.model = t.GetModelMatrix();
@@ -4771,6 +4900,7 @@ int main()
                     uniformBuffer.CopyFrom(std::move(ubo), imageIndex);
                 }
 
+                //main push constants
                 {
                     VkBufferDeviceAddressInfo addressInfo{};
                     addressInfo.buffer = lightsBuffer.buffer.buffer;
@@ -4781,10 +4911,12 @@ int main()
                     PushConstantsPBR constants{};
                     constants.lightsBuffer = deviceAddress;
                     constants.count = lightCount;
+                    constants.indirectMultiplier = ::indirectMultiplier;
 
-                    vkCmdPushConstants(commandBuffers[currentFrame].buffer, pbrMaterial->pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 12, &constants);
+                    vkCmdPushConstants(commandBuffers[currentFrame].buffer, pbrMaterial->pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, &constants);
                 }
 
+                //Cubemap UBO
                 {
                     UniformBufferPBR ubo{};
                     ubo.model = cbrTransformable.GetModelMatrix();
@@ -4800,6 +4932,7 @@ int main()
                     cbrUniformBuffer.CopyFrom(std::move(ubo), imageIndex);
                 }
 
+                //Light source UBO
                 {
                     UniformBufferPBR ubo{};
                     ubo.model = lsrTransformable.GetModelMatrix();
@@ -4815,10 +4948,27 @@ int main()
                     lsrUniformBuffer.CopyFrom(std::move(ubo), imageIndex);
                 }
 
+                //graph UBO
+                {
+                    UniformBufferPBR ubo{};
+                    ubo.model = graphTransformable.GetModelMatrix();
+                    ubo.view = camera.view;
+                    ubo.proj = camera.projection;
+
+                    ubo.axisSwizzle = Camera::AxisSwizzle();
+
+                    ubo.normal = glm::transpose(glm::inverse(ubo.model));
+
+                    ubo.cameraPos = camera.GetPosition();
+
+                    graphUniformBuffer.CopyFrom(std::move(ubo), imageIndex);
+                }
+
                 RenderDrawable(commandBuffers[currentFrame].buffer, pbrMesh);
 
                 RenderDrawable(commandBuffers[currentFrame].buffer, cubemapMesh);
 
+                //light source push constants
                 {
                     VkBufferDeviceAddressInfo addressInfo{};
                     addressInfo.buffer = lightsBuffer.buffer.buffer;
@@ -4834,6 +4984,27 @@ int main()
                 }
 
                 RenderDrawable(commandBuffers[currentFrame], lsrMesh, lightCount);
+
+                //graph push constants
+                /*{
+                    GraphPushConstants constants{};
+                    constants.resolution = graphResolution;
+                    constants.textureScale = 1.f;
+
+                    vkCmdPushConstants(commandBuffers[currentFrame].buffer, graphMaterial->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, 8, &constants);
+                }*/
+
+                //dispatch graph draw command
+                /*{
+                    graphMaterial->Bind(commandBuffers[currentFrame]);
+
+                    graphSets.Bind(commandBuffers[currentFrame], graphMaterial->pipelineLayout, imageIndex, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
+                    VkDeviceSize offsets[] = { 0 };
+
+                    vkCmdDraw(commandBuffers[currentFrame].buffer, (graphResolution - 1) * 2 * graphResolution, 1, 0, 0);
+                }*/
+
 
                 renderPass.End(commandBuffers[currentFrame].buffer);
             }
@@ -4916,7 +5087,7 @@ int main()
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
         {
             framebufferResized = false;
-            swapchain.Recreate();
+            swapchain.Recreate(window);
         }
         else if (result != VK_SUCCESS)
         {
