@@ -9,6 +9,7 @@
 
 #include "binary_io_utility.h"
 #include "serialization.h"
+#include "VulkanContext.h"  
 
 namespace fs = std::filesystem;
 
@@ -67,7 +68,7 @@ void Destroy(void* asset)
 }
 using AssetDestroyFunction = void(*)(void*);
 
-class AssetManager
+class AssetManager : MoveConstructOnly, VulkanResource
 {
     template<typename T>
     friend class AssetReference;
@@ -80,7 +81,7 @@ public:
         RANDOM
     };
 
-    AssetManager()
+    AssetManager(VulkanContext& context) : VulkanResource(context)
     {
         instanceData["default"];
     }
@@ -155,14 +156,14 @@ public:
                 return any->second;
 
             auto &fileData = FileCache(desc.file);
-            AssetType* newAsset = new AssetType(fileData[desc.treePath], instanceData[instance], reinterpret_cast<AssetType*>(any->second.data), instanceData[any->first]);
+            AssetType* newAsset = new AssetType(context, fileData[desc.treePath], instanceData[instance], reinterpret_cast<AssetType*>(any->second.data), instanceData[any->first]);
             auto storedNewAsset = list.emplace(std::piecewise_construct, std::forward_as_tuple(instance), std::forward_as_tuple(newAsset, Destroy<AssetType>));
             return storedNewAsset.first->second;
         }
         else
         {
             auto& fileData = FileCache(desc.file);
-            AssetType* newAsset = new AssetType(fileData[desc.treePath], instanceData[instance], nullptr, instanceData["default"]);
+            AssetType* newAsset = new AssetType(context, fileData[desc.treePath], instanceData[instance], nullptr, instanceData["default"]);
             auto storedNewAsset = list.emplace(std::piecewise_construct, std::forward_as_tuple(instance), std::forward_as_tuple(newAsset, Destroy<AssetType>));
             return storedNewAsset.first->second;
         }
@@ -180,7 +181,6 @@ public:
         instanceData[dst] = src;
     }
 
-public:
 
 };
 struct AssetInstanceDescriptor
