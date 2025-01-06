@@ -2807,8 +2807,6 @@ void initVulkan();
 
 void cleanup();
 
-void createSurface();
-
 void createInstance();
 void pickPhysicalDevice();
 void createLogicalDevice();
@@ -2817,7 +2815,6 @@ void createSyncObjects();
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
-VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 
 SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
 bool isDeviceSuitable(VkPhysicalDevice device);
@@ -2863,54 +2860,6 @@ static void key_callback(int key, int scancode, int action, int mods)
     }
 }
 
-void initVulkan()
-{
-    createInstance();
-
-    volkLoadInstance(instance);
-
-    setupDebugMessenger();
-    createSurface();
-    pickPhysicalDevice();
-    createLogicalDevice();
-
-    VmaAllocatorCreateInfo createInfo{};
-
-    createInfo.device = device;
-    createInfo.instance = instance;
-    createInfo.physicalDevice = physicalDevice;
-    createInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-
-    VmaVulkanFunctions vulkanFuncs{};
-    vulkanFuncs.vkAllocateMemory = vkAllocateMemory;
-    vulkanFuncs.vkBindBufferMemory = vkBindBufferMemory;
-    vulkanFuncs.vkBindImageMemory = vkBindImageMemory;
-    vulkanFuncs.vkCreateBuffer = vkCreateBuffer;
-    vulkanFuncs.vkCreateImage = vkCreateImage;
-    vulkanFuncs.vkDestroyBuffer = vkDestroyBuffer;
-    vulkanFuncs.vkDestroyImage = vkDestroyImage;
-    vulkanFuncs.vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges;
-    vulkanFuncs.vkFreeMemory = vkFreeMemory;
-    vulkanFuncs.vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements;
-    vulkanFuncs.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
-    vulkanFuncs.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
-    vulkanFuncs.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
-    vulkanFuncs.vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges;
-    vulkanFuncs.vkMapMemory = vkMapMemory;
-    vulkanFuncs.vkUnmapMemory = vkUnmapMemory;
-    vulkanFuncs.vkCmdCopyBuffer = vkCmdCopyBuffer;
-
-    createInfo.pVulkanFunctions = &vulkanFuncs;
-
-    vmaCreateAllocator(&createInfo, &allocator);
-
-    createSyncObjects();
-
-    camera.fov = 90.f;
-    camera.UpdateProjection(glm::uvec2(800, 600));
-    lastTime = std::chrono::high_resolution_clock::now();
-
-}
 
 /*void cleanupSwapChain()
 {
@@ -3594,23 +3543,23 @@ private:
     }
 
 public:
-
+    
     Window(CreateInfo ci = {}) : window(nullptr)
     {
         glfwDefaultWindowHints();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfwWindowHint(GLFW_RESIZABLE, (ci.flags & RESIZABLE) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_VISIBLE, (ci.flags & VISIBLE) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_DECORATED, (ci.flags & DECORATED) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_FOCUSED, (ci.flags & FOCUSED) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_AUTO_ICONIFY, (ci.flags & AUTO_ICONIFY) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_FLOATING, (ci.flags & FLOATING) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_MAXIMIZED, (ci.flags & MAXIMIZED) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_CENTER_CURSOR, (ci.flags & CENTER_CURSOR) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_FOCUS_ON_SHOW, (ci.flags & FOCUS_ON_SHOW) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_SCALE_TO_MONITOR, (ci.flags & SCALE_TO_MONITOR) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, ((ci.flags & RESIZABLE) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_VISIBLE, ((ci.flags & VISIBLE) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_DECORATED, ((ci.flags & DECORATED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUSED, ((ci.flags & FOCUSED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_AUTO_ICONIFY, ((ci.flags & AUTO_ICONIFY) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_FLOATING, ((ci.flags & FLOATING) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_MAXIMIZED, ((ci.flags & MAXIMIZED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_CENTER_CURSOR, ((ci.flags & CENTER_CURSOR) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUS_ON_SHOW, ((ci.flags & FOCUS_ON_SHOW) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_SCALE_TO_MONITOR, ((ci.flags & SCALE_TO_MONITOR) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
         //glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, (ci.flags & SCALE_FRAMEBUFFER) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
         //glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, (ci.flags & MOUSE_PASSTHROUGH) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
 
@@ -3622,10 +3571,28 @@ public:
 
         glfwSetFramebufferSizeCallback(window, GenericFramebufferSizeCallback);
     }
+    Window(const Window&) = delete;
+    Window(Window&& rhs) noexcept : window(rhs.window), 
+                           framebufferCallback(std::move(rhs.framebufferCallback)),
+                           keyCallback(std::move(rhs.keyCallback))
+    {
+        rhs.window = nullptr;
+    }
+
+    Window& operator=(const Window&) = delete;
+    Window& operator=(Window&& rhs) noexcept
+    {
+        window = rhs.window;
+        rhs.window = nullptr;
+
+        framebufferCallback = std::move(rhs.framebufferCallback);
+        keyCallback = std::move(rhs.keyCallback);
+    }
 
     ~Window()
     {
-        glfwDestroyWindow(window);
+        std::println("~Window()");
+        if(window) glfwDestroyWindow(window);
     }
 
     glm::ivec2 GetWindowSize() const
@@ -3634,7 +3601,6 @@ public:
         glfwGetWindowSize(window, &size.x, &size.y);
         return size;
     }
-
     glm::ivec2 GetFramebufferSize() const
     {
         glm::ivec2 size{};
@@ -3724,6 +3690,54 @@ VkExtent2D chooseSwapExtent(const Window& window, const VkSurfaceCapabilitiesKHR
         return actualExtent;
     }
 }
+void initVulkan(const Window& window)
+{
+    createInstance();
+
+    volkLoadInstance(instance);
+
+    setupDebugMessenger();
+    createSurface(window);
+    pickPhysicalDevice();
+    createLogicalDevice();
+
+    VmaAllocatorCreateInfo createInfo{};
+
+    createInfo.device = device;
+    createInfo.instance = instance;
+    createInfo.physicalDevice = physicalDevice;
+    createInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+
+    VmaVulkanFunctions vulkanFuncs{};
+    vulkanFuncs.vkAllocateMemory = vkAllocateMemory;
+    vulkanFuncs.vkBindBufferMemory = vkBindBufferMemory;
+    vulkanFuncs.vkBindImageMemory = vkBindImageMemory;
+    vulkanFuncs.vkCreateBuffer = vkCreateBuffer;
+    vulkanFuncs.vkCreateImage = vkCreateImage;
+    vulkanFuncs.vkDestroyBuffer = vkDestroyBuffer;
+    vulkanFuncs.vkDestroyImage = vkDestroyImage;
+    vulkanFuncs.vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges;
+    vulkanFuncs.vkFreeMemory = vkFreeMemory;
+    vulkanFuncs.vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements;
+    vulkanFuncs.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
+    vulkanFuncs.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
+    vulkanFuncs.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
+    vulkanFuncs.vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges;
+    vulkanFuncs.vkMapMemory = vkMapMemory;
+    vulkanFuncs.vkUnmapMemory = vkUnmapMemory;
+    vulkanFuncs.vkCmdCopyBuffer = vkCmdCopyBuffer;
+
+    createInfo.pVulkanFunctions = &vulkanFuncs;
+
+    vmaCreateAllocator(&createInfo, &allocator);
+
+    createSyncObjects();
+
+    camera.fov = 90.f;
+    camera.UpdateProjection(glm::uvec2(800, 600));
+    lastTime = std::chrono::high_resolution_clock::now();
+
+}
 
 struct Swapchain
 {
@@ -3739,12 +3753,12 @@ struct Swapchain
 
     //std::function<void()> recreateCallback;
 
-    Swapchain() : valid(false)
+    Swapchain(const Window& window) : valid(false)
     {
-        Create();
+        Create(window);
     }
 
-    void Create()
+    void Create(const Window& window)
     {
         if (valid) Destroy();
 
@@ -3752,7 +3766,7 @@ struct Swapchain
 
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
         VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-        extent = chooseSwapExtent(swapChainSupport.capabilities);
+        extent = chooseSwapExtent(window, swapChainSupport.capabilities);
 
         imageCount = swapChainSupport.capabilities.minImageCount + 1;
         if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount)
@@ -3853,7 +3867,7 @@ struct Swapchain
 
         vkDeviceWaitIdle(device);
 
-        Create();
+        Create(window);
         //recreateCallback();
     }
 
@@ -4403,7 +4417,7 @@ int main()
 
     window.BindKeyCallback(key_callback);
 
-    initVulkan();
+    initVulkan(window);
          
     std::array bindings = { Vertex::getBindingDescription() };
     std::array attributes = { Vertex::getAttributeDescriptions() };
@@ -4757,7 +4771,7 @@ int main()
 
     lsrTransformable.SetScale(glm::vec3(0.05f));
 
-    Swapchain swapchain;
+    Swapchain swapchain(window);
     bool framebufferResized = false;
     window.BindFramebufferSizeCallback([&](glm::ivec2) { framebufferResized = true; });
 
@@ -4799,7 +4813,7 @@ int main()
 
     depthImageTransition.Execute();
 
-    RenderPass renderPass(Rect<std::uint32_t>{{0, 0}, Extent(swapchain.extent)}, std::vector(std::from_range, colorImageViews | std::views::transform([](auto& imageView) -> RenderPassAttachment { return RenderPassAttachment(imageView); })), RenderPassAttachment(depthImageView, ClearValue(1.f), VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL));
+    RenderPass renderPass(Rect<std::uint32_t>{{0, 0}, colorImageSize}, std::vector(std::from_range, colorImageViews | std::views::transform([](auto& imageView) -> RenderPassAttachment { return RenderPassAttachment(imageView); })), RenderPassAttachment(depthImageView, ClearValue(1.f), VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL));
  
     
 
