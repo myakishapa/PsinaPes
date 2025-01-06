@@ -618,7 +618,7 @@ struct CommandBuffer : VulkanResource
 };
 struct TempCommandBuffer : VulkanResource
 {
-    static CommandPool* tempCommandPool;
+    static inline CommandPool* tempCommandPool = nullptr;
 
     VkCommandBuffer buffer;
     Fence fence;
@@ -1026,7 +1026,7 @@ public:
         };
     };
 
-    Material(VulkanContext context, const HvTree& tree, const HvTree& instance, Material* base, const HvTree& baseInstance) : VulkanResource(context)
+    Material(VulkanContext &context, const HvTree& tree, const HvTree& instance, Material* base, const HvTree& baseInstance) : VulkanResource(context)
     {
         std::size_t offset = 0;
         std::vector<VkPushConstantRange> pushConstants;
@@ -2143,7 +2143,7 @@ public:
             throw std::runtime_error("failed to allocate descriptor sets!");
         }
     }
-    HDescriptorSets(HDescriptorSets&& rhs) : descriptorSets(std::move(rhs.descriptorSets)), pool(rhs.pool), VulkanResource(rhs.context)
+    HDescriptorSets(HDescriptorSets&& rhs) noexcept : descriptorSets(std::move(rhs.descriptorSets)), pool(rhs.pool), VulkanResource(rhs.context)
     {
 
     }
@@ -2543,49 +2543,6 @@ struct Scene
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
 
-
-
-
-/*void cleanupSwapChain()
-{
-    vkDestroyImageView(device, depthImageView, nullptr);
-
-    vmaDestroyImage(allocator, depthImage, depthImageAlloc);
-
-    for (auto framebuffer : swapChainFramebuffers)
-    {
-        vkDestroyFramebuffer(device, framebuffer, nullptr);
-    }
-
-    for (auto imageView : swapChainImageViews)
-    {
-        vkDestroyImageView(device, imageView, nullptr);
-    }
-
-    vkDestroySwapchainKHR(device, swapChain, nullptr);
-}*/
-/*void cleanup()
-{
-    //cleanupSwapChain();
-
-    //vkDestroyRenderPass(device, renderPass, nullptr);
-
-    vkDestroyDevice(device, nullptr);
-
-    if (enableValidationLayers)
-    {
-        vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-    }
-
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-    vkDestroyInstance(instance, nullptr);
-
-
-    glfwTerminate();
-}*/
-
-
-
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 {
     for (const auto& availableFormat : availableFormats)
@@ -2875,52 +2832,6 @@ VkExtent2D chooseSwapExtent(const GLFW::Window& window, const VkSurfaceCapabilit
         return actualExtent;
     }
 }
-/*void initVulkan(const GLFW::Window& window)
-{
-    createInstance();
-
-    volkLoadInstance(instance);
-
-    setupDebugMessenger();
-    createSurface(window);
-    pickPhysicalDevice();
-    createLogicalDevice();
-
-    VmaAllocatorCreateInfo createInfo{};
-
-    createInfo.device = device;
-    createInfo.instance = instance;
-    createInfo.physicalDevice = physicalDevice;
-    createInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-
-    VmaVulkanFunctions vulkanFuncs{};
-    vulkanFuncs.vkAllocateMemory = vkAllocateMemory;
-    vulkanFuncs.vkBindBufferMemory = vkBindBufferMemory;
-    vulkanFuncs.vkBindImageMemory = vkBindImageMemory;
-    vulkanFuncs.vkCreateBuffer = vkCreateBuffer;
-    vulkanFuncs.vkCreateImage = vkCreateImage;
-    vulkanFuncs.vkDestroyBuffer = vkDestroyBuffer;
-    vulkanFuncs.vkDestroyImage = vkDestroyImage;
-    vulkanFuncs.vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges;
-    vulkanFuncs.vkFreeMemory = vkFreeMemory;
-    vulkanFuncs.vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements;
-    vulkanFuncs.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
-    vulkanFuncs.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
-    vulkanFuncs.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
-    vulkanFuncs.vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges;
-    vulkanFuncs.vkMapMemory = vkMapMemory;
-    vulkanFuncs.vkUnmapMemory = vkUnmapMemory;
-    vulkanFuncs.vkCmdCopyBuffer = vkCmdCopyBuffer;
-
-    createInfo.pVulkanFunctions = &vulkanFuncs;
-
-    vmaCreateAllocator(&createInfo, &allocator);
-
-    camera.fov = 90.f;
-    camera.UpdateProjection(glm::uvec2(800, 600));
-    lastTime = std::chrono::high_resolution_clock::now();
-
-}*/
 
 struct Swapchain : VulkanResource, MoveConstructOnly
 {
@@ -3051,7 +2962,7 @@ struct Swapchain : VulkanResource, MoveConstructOnly
 
         imageViews.reserve(imageCount);
         for (int i = 0; i < imageCount; i++)
-            imageViews.emplace_back(imageRefs[i]);
+            imageViews.emplace_back(context, imageRefs[i]);
 
         context.swapChainImageFormat = format;
     }
@@ -3522,12 +3433,10 @@ static void key_callback(GLFW::Window::KeyCallbackArgs args)
     }
 }
 
-
 int main()
 {
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return x * (8.0 - x); }, 0, 8, 2'000'000.0) << "    " << IntegrateZhopa() << "\n\n\n\n";
 
-    
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, -hpi, hpi, 2'000'000.0) << "\n\n\n\n";
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, 0, 8) << "\n\n\n\n";
     
@@ -3543,6 +3452,10 @@ int main()
     window.BindKeyCallback(key_callback);
 
     VulkanContext context(window);
+
+    camera.fov = 90.f;
+    camera.UpdateProjection(glm::uvec2(1920, 1080));
+    lastTime = std::chrono::high_resolution_clock::now();
 
     CommandPool tempCommandPool(context);
     TempCommandBuffer::tempCommandPool = &tempCommandPool;
@@ -3899,7 +3812,7 @@ int main()
     colorImageViews.reserve(renderTargetCount);
     for (auto i = 0; i < renderTargetCount; i++)
     {
-        colorImageViews.emplace_back(colorImage.WholeLayer(i));
+        colorImageViews.emplace_back(context, colorImage.WholeLayer(i));
     }
 
     //ImageView colorImageView(colorImage);
