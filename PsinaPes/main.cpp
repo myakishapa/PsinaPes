@@ -879,59 +879,6 @@ struct Texture
     }
 
 };
-struct TextureCube
-{
-    std::vector<std::byte> data;
-    glm::uvec2 size;
-
-    struct ImageInfo
-    {
-        stbi_uc* pixels;
-        int width, height, channels;
-        VkDeviceSize imageSize;
-    };
-
-    bool LoadFromDir(fs::path dir)
-    {
-        if (!fs::is_directory(dir)) return false;
-
-        //std::array<std::string, 6> faceNames = { "posx.jpg", "posy.jpg", "posz.jpg", "negx.jpg", "negy.jpg", "negz.jpg" };
-
-        std::array<std::string, 6> faceNames = { "posx.jpg", "negx.jpg", "negy.jpg", "posy.jpg", "posz.jpg", "negz.jpg" };
-        std::array<ImageInfo, 6> infos;
-
-        VkDeviceSize fullSize = 0;
-
-        for (std::size_t i = 0; i < 6; i++)
-        {
-            auto path = dir / faceNames[i];
-            std::cout << path;
-            stbi_set_flip_vertically_on_load(true);
-            infos[i].pixels = stbi_load(path.generic_string().c_str(), &infos[i].width, &infos[i].height, &infos[i].channels, STBI_rgb_alpha);
-            infos[i].imageSize = infos[i].width * infos[i].height * 4;
-            fullSize += infos[i].imageSize;
-
-            size.x = infos[i].width;
-            size.y = infos[i].height;
-
-            if (!infos[i].pixels)
-                return false;
-        }
-
-        data.resize(fullSize);
-
-        std::size_t offset = 0;
-
-        for (std::size_t i = 0; i < 6; i++)
-        {
-            std::memcpy(data.data() + offset, infos[i].pixels, infos[i].imageSize);
-            offset += infos[i].imageSize;
-            stbi_image_free(infos[i].pixels);
-        }
-
-        return true;
-    }
-};
 
 struct Buffer
 {
@@ -2801,8 +2748,6 @@ struct Scene
     }
 };
 
-static void key_callback(int key, int scancode, int action, int mods);
-
 void initVulkan();
 
 void cleanup();
@@ -2826,39 +2771,7 @@ void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 void setupDebugMessenger();
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
 
-bool hTank = false;
 
-static void key_callback(int key, int scancode, int action, int mods)
-{
-    if (key == GLFW_KEY_R && action == GLFW_PRESS)
-    {
-        camera.perspective = !camera.perspective;
-        //camera.UpdateProjection(glm::uvec2(swapChainExtent.width, swapChainExtent.height));
-    }
-    if (key == GLFW_KEY_V && action == GLFW_PRESS) hTank = !hTank;
-
-    if (key == GLFW_KEY_T && action == GLFW_PRESS)
-    {
-        indirectMultiplier += indirectMultiplierStep;
-        std::println("Indirect multiplier: {}", indirectMultiplier);
-    }
-    if (key == GLFW_KEY_G && action == GLFW_PRESS)
-    {
-        indirectMultiplier -= indirectMultiplierStep;
-        std::println("Indirect multiplier: {}", indirectMultiplier);
-    }
-
-    if (key == GLFW_KEY_Y && action == GLFW_PRESS)
-    {
-        indirectMultiplier += indirectMultiplierStep2;
-        std::println("Indirect multiplier: {}", indirectMultiplier);
-    }
-    if (key == GLFW_KEY_H && action == GLFW_PRESS)
-    {
-        indirectMultiplier -= indirectMultiplierStep2;
-        std::println("Indirect multiplier: {}", indirectMultiplier);
-    }
-}
 
 
 /*void cleanupSwapChain()
@@ -3304,11 +3217,6 @@ void StoreTexture(HvTree& dst, Texture& texture)
     dst["data"].Store(texture.textureData.data(), texture.textureData.size());
     dst["float"].Store(HvBool(texture.useFloat));
 }
-void StoreTexture(HvTree& dst, TextureCube& texture)
-{
-    dst["size"].Store(texture.size);
-    dst["data"].Store(texture.data.data(), texture.data.size() * sizeof(std::uint32_t));
-}
 
 void StoreMaterial(HvTree& dst, std::span<ShaderStageDescriptor> descriptors, Material::PipelineCreateInfo createInfo, std::span<VkVertexInputAttributeDescription> attributes, std::span<VkVertexInputBindingDescription> bindings)
 {
@@ -3480,165 +3388,259 @@ constexpr Type operator&(Type lhs, Type rhs)
     return static_cast<Type>(std::to_underlying(lhs) & std::to_underlying(rhs));
 }
 
-class Window
+namespace GLFW
 {
-public:
-
-    enum class Flags
+    class Scancode
     {
-        EMPTY = 0x0,
-        RESIZABLE = 0x1,
-        VISIBLE = 0x2,
-        DECORATED = 0x4,
-        FOCUSED = 0x8,
-        AUTO_ICONIFY = 0x10,
-        FLOATING = 0x20,
-        MAXIMIZED = 0x40,
-        CENTER_CURSOR = 0x80,
-        //TRANSPARENT = 0x100,
-        FOCUS_ON_SHOW = 0x200,
-        SCALE_TO_MONITOR = 0x400,
-        //SCALE_FRAMEBUFFER = 0x800,
-        //MOUSE_PASSTHROUGH = 0x1000,
+        int scancode;
+
+    public:
+
+        Scancode(int scancode) : scancode(scancode) {}
+
+        std::string_view Name() const
+        {
+            auto cString = glfwGetKeyName(GLFW_KEY_UNKNOWN, scancode);
+            return std::string_view(cString, std::strlen(cString));
+        }
+
+        friend auto operator<=>(Scancode, Scancode) = default;
+
+        int Handle() const
+        {
+            return scancode;
+        }
     };
 
-    using enum Flags;
-    static constexpr Flags DefaultFlags = FOCUSED | VISIBLE | DECORATED | RESIZABLE | AUTO_ICONIFY | CENTER_CURSOR | FOCUS_ON_SHOW/* | SCALE_FRAMEBUFFER*/;
-
-    static constexpr int DontCare = GLFW_DONT_CARE;
-
-    struct CreateInfo
+    class Key
     {
-        Flags flags = DefaultFlags;
+        int key;
 
-        glm::ivec2 size = glm::ivec2(WIDTH, HEIGHT);
+    public:
 
-        int refreshRate = DontCare;
+        Key(int key) : key(key) {}
 
-        std::string_view title = "Vulkan";
+        std::string_view Name() const
+        {
+            auto cString = glfwGetKeyName(key, -1);
+            return std::string_view(cString, std::strlen(cString));
+        }
+
+        friend auto operator<=>(Key, Key) = default;
+
+        Scancode GetScancode() const
+        {
+            return Scancode(glfwGetKeyScancode(key));
+        }
+
+        int Handle() const
+        {
+            return key;
+        }
+
+        friend auto operator<=>(Scancode code, Key key)
+        {
+            return key.GetScancode() = code;
+        }
+        friend auto operator<=>(Key key, Scancode code)
+        {
+            return key.GetScancode() = code;
+        }
     };
 
-    using FramebufferSizeCallback = void(glm::ivec2);
-    using KeyCallback = void(int, int, int, int);
-
-private:
-
-    GLFWwindow *window;
-
-    std::function<FramebufferSizeCallback> framebufferCallback;
-    static void GenericFramebufferSizeCallback(GLFWwindow* window, int width, int height)
+    enum struct Modifier : int
     {
-        auto raiiWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
-        glm::ivec2 size(width, height);
+        SHIFT = GLFW_MOD_SHIFT,
+        CONTROL = GLFW_MOD_CONTROL,
+        ALT = GLFW_MOD_ALT,
+        SUPER = GLFW_MOD_SUPER,
+        CAPS_LOCK = GLFW_MOD_CAPS_LOCK,
+        NUM_LOCK = GLFW_MOD_NUM_LOCK
+    };
 
-        raiiWindow->framebufferCallback(size);
-    }
-
-    std::function<KeyCallback> keyCallback;
-    static void GenericKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+    enum struct Action
     {
-        auto raiiWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+        PRESS = GLFW_PRESS,
+        RELEASE = GLFW_RELEASE,
+        REPEAT = GLFW_REPEAT
+    };
 
-        raiiWindow->keyCallback(key, scancode, action, mods);
-    }
 
-public:
-    
-    Window(CreateInfo ci = {}) : window(nullptr)
+
+    class Window
     {
-        glfwDefaultWindowHints();
+    public:
 
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        enum class Flags
+        {
+            EMPTY = 0x0,
+            RESIZABLE = 0x1,
+            VISIBLE = 0x2,
+            DECORATED = 0x4,
+            FOCUSED = 0x8,
+            AUTO_ICONIFY = 0x10,
+            FLOATING = 0x20,
+            MAXIMIZED = 0x40,
+            CENTER_CURSOR = 0x80,
+            //TRANSPARENT = 0x100,
+            FOCUS_ON_SHOW = 0x200,
+            SCALE_TO_MONITOR = 0x400,
+            //SCALE_FRAMEBUFFER = 0x800,
+            //MOUSE_PASSTHROUGH = 0x1000,
+        };
 
-        glfwWindowHint(GLFW_RESIZABLE, ((ci.flags & RESIZABLE) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_VISIBLE, ((ci.flags & VISIBLE) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_DECORATED, ((ci.flags & DECORATED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_FOCUSED, ((ci.flags & FOCUSED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_AUTO_ICONIFY, ((ci.flags & AUTO_ICONIFY) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_FLOATING, ((ci.flags & FLOATING) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_MAXIMIZED, ((ci.flags & MAXIMIZED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_CENTER_CURSOR, ((ci.flags & CENTER_CURSOR) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_FOCUS_ON_SHOW, ((ci.flags & FOCUS_ON_SHOW) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        glfwWindowHint(GLFW_SCALE_TO_MONITOR, ((ci.flags & SCALE_TO_MONITOR) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
-        //glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, (ci.flags & SCALE_FRAMEBUFFER) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
-        //glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, (ci.flags & MOUSE_PASSTHROUGH) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+        using enum Flags;
+        static constexpr Flags DefaultFlags = FOCUSED | VISIBLE | DECORATED | RESIZABLE | AUTO_ICONIFY | CENTER_CURSOR | FOCUS_ON_SHOW/* | SCALE_FRAMEBUFFER*/;
 
-        glfwWindowHint(GLFW_REFRESH_RATE, ci.refreshRate);
+        static constexpr int DontCare = GLFW_DONT_CARE;
 
-        window = glfwCreateWindow(ci.size.x, ci.size.y, ci.title.data(), nullptr, nullptr);
+        struct CreateInfo
+        {
+            Flags flags = DefaultFlags;
 
-        glfwSetWindowUserPointer(window, this);
+            glm::ivec2 size = glm::ivec2(WIDTH, HEIGHT);
 
-        glfwSetFramebufferSizeCallback(window, GenericFramebufferSizeCallback);
-    }
-    Window(const Window&) = delete;
-    Window(Window&& rhs) noexcept : window(rhs.window), 
-                           framebufferCallback(std::move(rhs.framebufferCallback)),
-                           keyCallback(std::move(rhs.keyCallback))
-    {
-        rhs.window = nullptr;
-    }
+            int refreshRate = DontCare;
 
-    Window& operator=(const Window&) = delete;
-    Window& operator=(Window&& rhs) noexcept
-    {
-        window = rhs.window;
-        rhs.window = nullptr;
+            std::string_view title = "Vulkan";
+        };
 
-        framebufferCallback = std::move(rhs.framebufferCallback);
-        keyCallback = std::move(rhs.keyCallback);
-    }
+        using FramebufferSizeCallback = void(glm::ivec2);
 
-    ~Window()
-    {
-        std::println("~Window()");
-        if(window) glfwDestroyWindow(window);
-    }
+        struct KeyCallbackArgs
+        {
+            Key key;
+            Scancode code;
+            Action action;
+            Modifier mods;
+        };
+        using KeyCallback = void(KeyCallbackArgs);
 
-    glm::ivec2 GetWindowSize() const
-    {
-        glm::ivec2 size{};
-        glfwGetWindowSize(window, &size.x, &size.y);
-        return size;
-    }
-    glm::ivec2 GetFramebufferSize() const
-    {
-        glm::ivec2 size{};
-        glfwGetFramebufferSize(window, &size.x, &size.y);
-        return size;
-    }
+    private:
 
-    bool ShouldClose() const
-    {
-        return glfwWindowShouldClose(window);
-    }
+        GLFWwindow* window;
 
-    GLFWwindow* Handle() const
-    {
-        return window;
-    }
+        std::function<FramebufferSizeCallback> framebufferCallback;
+        static void GenericFramebufferSizeCallback(GLFWwindow* window, int width, int height)
+        {
+            auto raiiWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+            glm::ivec2 size(width, height);
 
-    glm::dvec2 GetCursorPosition() const
-    {
-        glm::dvec2 position{};
-        glfwGetCursorPos(window, &position.x, &position.y);
-        return position;
-    }
+            raiiWindow->framebufferCallback(size);
+        }
 
-    template<typename F>
-    void BindFramebufferSizeCallback(F&& function)
-    {
-        framebufferCallback = std::forward<F>(function);
-    }
-    template<typename F>
-    void BindKeyCallback(F&& function)
-    {
-        keyCallback = std::forward<F>(function);
-    }
+        std::function<KeyCallback> keyCallback;
+        static void GenericKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+        {
+            auto raiiWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 
-};
+            KeyCallbackArgs args{ key, scancode, static_cast<Action>(action), static_cast<Modifier>(mods) };
 
-void createSurface(const Window& window)
+            raiiWindow->keyCallback(args);
+        }
+
+    public:
+
+        Window(CreateInfo ci = {}) : window(nullptr)
+        {
+            glfwDefaultWindowHints();
+
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+            glfwWindowHint(GLFW_RESIZABLE, ((ci.flags & RESIZABLE) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_VISIBLE, ((ci.flags & VISIBLE) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_DECORATED, ((ci.flags & DECORATED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_FOCUSED, ((ci.flags & FOCUSED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_AUTO_ICONIFY, ((ci.flags & AUTO_ICONIFY) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_FLOATING, ((ci.flags & FLOATING) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_MAXIMIZED, ((ci.flags & MAXIMIZED) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_CENTER_CURSOR, ((ci.flags & CENTER_CURSOR) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_FOCUS_ON_SHOW, ((ci.flags & FOCUS_ON_SHOW) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            glfwWindowHint(GLFW_SCALE_TO_MONITOR, ((ci.flags & SCALE_TO_MONITOR) != EMPTY) ? GLFW_TRUE : GLFW_FALSE);
+            //glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, (ci.flags & SCALE_FRAMEBUFFER) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+            //glfwWindowHint(GLFW_MOUSE_PASSTHROUGH, (ci.flags & MOUSE_PASSTHROUGH) == EMPTY ? GLFW_TRUE : GLFW_FALSE);
+
+            glfwWindowHint(GLFW_REFRESH_RATE, ci.refreshRate);
+
+            window = glfwCreateWindow(ci.size.x, ci.size.y, ci.title.data(), nullptr, nullptr);
+
+            glfwSetWindowUserPointer(window, this);
+
+            glfwSetFramebufferSizeCallback(window, GenericFramebufferSizeCallback);
+        }
+        Window(const Window&) = delete;
+        Window(Window&& rhs) noexcept : window(rhs.window),
+            framebufferCallback(std::move(rhs.framebufferCallback)),
+            keyCallback(std::move(rhs.keyCallback))
+        {
+            rhs.window = nullptr;
+        }
+
+        Window& operator=(const Window&) = delete;
+        Window& operator=(Window&& rhs) noexcept
+        {
+            window = rhs.window;
+            rhs.window = nullptr;
+
+            framebufferCallback = std::move(rhs.framebufferCallback);
+            keyCallback = std::move(rhs.keyCallback);
+        }
+
+        ~Window()
+        {
+            std::println("~Window()");
+            if (window) glfwDestroyWindow(window);
+        }
+
+        glm::ivec2 GetWindowSize() const
+        {
+            glm::ivec2 size{};
+            glfwGetWindowSize(window, &size.x, &size.y);
+            return size;
+        }
+        glm::ivec2 GetFramebufferSize() const
+        {
+            glm::ivec2 size{};
+            glfwGetFramebufferSize(window, &size.x, &size.y);
+            return size;
+        }
+
+        bool ShouldClose() const
+        {
+            return glfwWindowShouldClose(window);
+        }
+
+        GLFWwindow* Handle() const
+        {
+            return window;
+        }
+
+        glm::dvec2 GetCursorPosition() const
+        {
+            glm::dvec2 position{};
+            glfwGetCursorPos(window, &position.x, &position.y);
+            return position;
+        }
+
+        template<typename F>
+        void BindFramebufferSizeCallback(F&& function)
+        {
+            framebufferCallback = std::forward<F>(function);
+        }
+        template<typename F>
+        void BindKeyCallback(F&& function)
+        {
+            keyCallback = std::forward<F>(function);
+        }
+
+        Action GetKeyState(Key key) const
+        {
+            return static_cast<Action>(glfwGetKey(window, key.Handle()));
+        }
+    };
+}
+
+void createSurface(const GLFW::Window& window)
 {
     if (glfwCreateWindowSurface(instance, window.Handle(), nullptr, &surface) != VK_SUCCESS)
     {
@@ -3646,7 +3648,7 @@ void createSurface(const Window& window)
     }
 }
 
-void hinput(const Window& window)
+void hinput(const GLFW::Window& window)
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -3656,13 +3658,14 @@ void hinput(const Window& window)
     float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
     lastTime = currentTime;
 
-    if (glfwGetKey(window.Handle(), GLFW_KEY_W) == GLFW_PRESS) camera.AddOffset(glm::vec4(1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window.Handle(), GLFW_KEY_S) == GLFW_PRESS) camera.AddOffset(glm::vec4(-1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window.Handle(), GLFW_KEY_A) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, -1.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window.Handle(), GLFW_KEY_D) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 1.f, 0.f, 0.f) * speed * deltaTime);
-    if (glfwGetKey(window.Handle(), GLFW_KEY_E) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, 1.f, 0.f) * speed * deltaTime, false);
-    if (glfwGetKey(window.Handle(), GLFW_KEY_Q) == GLFW_PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, -1.f, 0.f) * speed * deltaTime, false);
-    if (glfwGetKey(window.Handle(), GLFW_KEY_F) == GLFW_PRESS) camera.hdebug();
+    using enum GLFW::Action;
+    if (window.GetKeyState(GLFW_KEY_W) == PRESS) camera.AddOffset(glm::vec4(1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
+    if (window.GetKeyState(GLFW_KEY_S) == PRESS) camera.AddOffset(glm::vec4(-1.f, 0.f, 0.f, 0.f) * speed * deltaTime);
+    if (window.GetKeyState(GLFW_KEY_A) == PRESS) camera.AddOffset(glm::vec4(0.f, -1.f, 0.f, 0.f) * speed * deltaTime);
+    if (window.GetKeyState(GLFW_KEY_D) == PRESS) camera.AddOffset(glm::vec4(0.f, 1.f, 0.f, 0.f) * speed * deltaTime);
+    if (window.GetKeyState(GLFW_KEY_E) == PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, 1.f, 0.f) * speed * deltaTime, false);
+    if (window.GetKeyState(GLFW_KEY_Q) == PRESS) camera.AddOffset(glm::vec4(0.f, 0.f, -1.f, 0.f) * speed * deltaTime, false);
+    if (window.GetKeyState(GLFW_KEY_F) == PRESS) camera.hdebug();
 
     static glm::dvec2 lastMousePos = window.GetCursorPosition();
 
@@ -3672,7 +3675,7 @@ void hinput(const Window& window)
 
     camera.AddRotation(glm::vec3(0.f, -delta.y, -delta.x) * rotationSpeed);
 }
-VkExtent2D chooseSwapExtent(const Window& window, const VkSurfaceCapabilitiesKHR& capabilities)
+VkExtent2D chooseSwapExtent(const GLFW::Window& window, const VkSurfaceCapabilitiesKHR& capabilities)
 {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
@@ -3690,7 +3693,7 @@ VkExtent2D chooseSwapExtent(const Window& window, const VkSurfaceCapabilitiesKHR
         return actualExtent;
     }
 }
-void initVulkan(const Window& window)
+void initVulkan(const GLFW::Window& window)
 {
     createInstance();
 
@@ -3753,12 +3756,12 @@ struct Swapchain
 
     //std::function<void()> recreateCallback;
 
-    Swapchain(const Window& window) : valid(false)
+    Swapchain(const GLFW::Window& window) : valid(false)
     {
         Create(window);
     }
 
-    void Create(const Window& window)
+    void Create(const GLFW::Window& window)
     {
         if (valid) Destroy();
 
@@ -3856,7 +3859,7 @@ struct Swapchain
         }
     }
 
-    void Recreate(const Window& window)
+    void Recreate(const GLFW::Window& window)
     {
         auto size = window.GetFramebufferSize();
         while (size.x == 0 || size.y == 0)
@@ -3871,7 +3874,7 @@ struct Swapchain
         //recreateCallback();
     }
 
-    std::uint32_t AcquireNextImage(VkSemaphore semaphore, const Window& window)
+    std::uint32_t AcquireNextImage(VkSemaphore semaphore, const GLFW::Window& window)
     {
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphore, VK_NULL_HANDLE, &imageIndex);
@@ -4397,6 +4400,39 @@ struct GraphPushConstants
     float textureScale;
 };
 
+static void key_callback(GLFW::Window::KeyCallbackArgs args)
+{
+    using enum GLFW::Action;
+    if (args.key == GLFW_KEY_R && args.action == PRESS)
+    {
+        camera.perspective = !camera.perspective;
+        //camera.UpdateProjection(glm::uvec2(swapChainExtent.width, swapChainExtent.height));
+    }
+
+    if (args.key == GLFW_KEY_T && args.action == PRESS)
+    {
+        indirectMultiplier += indirectMultiplierStep;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+    if (args.key == GLFW_KEY_G && args.action == PRESS)
+    {
+        indirectMultiplier -= indirectMultiplierStep;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+
+    if (args.key == GLFW_KEY_Y && args.action == PRESS)
+    {
+        indirectMultiplier += indirectMultiplierStep2;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+    if (args.key == GLFW_KEY_H && args.action == PRESS)
+    {
+        indirectMultiplier -= indirectMultiplierStep2;
+        std::println("Indirect multiplier: {}", indirectMultiplier);
+    }
+}
+
+
 int main()
 {
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return x * (8.0 - x); }, 0, 8, 2'000'000.0) << "    " << IntegrateZhopa() << "\n\n\n\n";
@@ -4404,13 +4440,13 @@ int main()
     
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, -hpi, hpi, 2'000'000.0) << "\n\n\n\n";
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, 0, 8) << "\n\n\n\n";
-
+    
     
     volkInitialize();
     
     glfwInit();
 
-    Window window;
+    GLFW::Window window;
 
     glfwSetInputMode(window.Handle(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetInputMode(window.Handle(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
