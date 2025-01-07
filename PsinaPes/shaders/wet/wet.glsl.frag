@@ -52,6 +52,7 @@ layout( push_constant ) uniform constants
 {	
 	Lights lights;
 	int lightCount;
+	float indirectMultiplier;
 } pushConstants;
 
 void main()
@@ -68,8 +69,9 @@ void main()
 	//float wetLevel = texture(metallicMap, TexCoords).r;
 	
 	float waterEta = 1 / 1.33;
-	vec3 waterF0 = vec3(0.02);
-	float waterRoughness = 0.01;
+	//vec3 waterF0 = vec3(0.02);
+	vec3 waterF0 = vec3(0.95, 0.93, 0.88);
+	float waterRoughness = 0.05;
 	
 	vec3 vertexNormal = TBN * vec3(0, 0, 1);
 	
@@ -105,14 +107,14 @@ void main()
 		Lo += mix(LoDry, TransparentBTDF(-woLower, LoLower, -vertexNormal, waterF0), wetLevel);
     }   
 	
-	vec3 waterIndirect = MyakishIndirectLighting2(V, vertexNormal, waterF0, waterRoughness, ao, lobeAngles, integratedBRDF, integratedRadiance, debugColor2, debugColor3, debugColor4, debugColor5, debugColor6, debugColor7);
+	vec3 waterIndirect = pushConstants.indirectMultiplier * MyakishIndirectLighting2(V, vertexNormal, waterF0, waterRoughness, ao, lobeAngles, integratedBRDF, integratedRadiance, debugColor2, debugColor3, debugColor4, debugColor5, debugColor6, debugColor7);
     vec3 color = Lo + waterIndirect * wetLevel;
     //vec3 color = waterIndirect;
+	
+	debugColor1 = vec4(waterIndirect, pushConstants.indirectMultiplier);
 
     outColor = vec4(color, 1.0);
 	
-	debugColor1 = vec4(waterIndirect, 1.0);
-	debugColor2 = vec4(Lo, 1.0);
     //outColor = vec4(waterIndirect, 1.0);
 	//outColor = vec4(texture(averagedBRDF, vec2(waterRoughness, dot(vertexNormal, V))));
 }

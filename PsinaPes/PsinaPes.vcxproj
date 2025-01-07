@@ -154,8 +154,12 @@
     <ClInclude Include="assets.h" />
     <ClInclude Include="binary_io_utility.h" />
     <ClInclude Include="ConstexprHash.h" />
+    <ClInclude Include="GLFWContext.h" />
     <ClInclude Include="serialization.h" />
     <ClInclude Include="utf.h" />
+    <ClInclude Include="Utility.h" />
+    <ClInclude Include="VulkanContext.h" />
+    <ClInclude Include="Window.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

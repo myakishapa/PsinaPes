@@ -34,7 +34,7 @@ struct QueueFamilyIndices
 };
 struct SwapChainSupportDetails
 {
-    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceCapabilitiesKHR capabilities{};
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
@@ -321,10 +321,10 @@ private:
     }
     void CreateLogicalDevice()
     {
-        QueueFamilyIndices indices = FindQueueFamilies(physicalDevice);
+        queueFamilyIndices = FindQueueFamilies(physicalDevice);
 
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
+        std::set<uint32_t> uniqueQueueFamilies = { queueFamilyIndices.graphicsFamily.value(), queueFamilyIndices.presentFamily.value() };
 
         float queuePriority = 1.0f;
         for (uint32_t queueFamily : uniqueQueueFamilies)
@@ -380,8 +380,8 @@ private:
             throw std::runtime_error("failed to create logical device!");
         }
 
-        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-        vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+        vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+        vkGetDeviceQueue(device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
     }
 
 public:

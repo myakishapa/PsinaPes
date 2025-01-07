@@ -38,5 +38,17 @@
     <ClInclude Include="ConstexprHash.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="VulkanContext.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Utility.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GLFWContext.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -50,6 +50,7 @@
 #include "ConstexprHash.h"
 #include "VulkanContext.h"
 #include "Window.h"
+#include "GLFWContext.h"
 
 #include <spirv.hpp>
 #include <spirv_reflect.hpp>
@@ -953,7 +954,7 @@ struct HDescriptorSetLayout
     std::vector<VkDescriptorSetLayoutBinding> bindings;
     VkDescriptorSetLayout layout;
 };
-struct Material : VulkanResource, MoveConstructOnly
+struct Material : VulkanResource, NonCopyable
 {
     std::map<std::uint32_t, HDescriptorSetLayout> setLayouts;
 
@@ -1324,13 +1325,6 @@ public:
             throw std::runtime_error("failed to create graphics pipeline!");
         }
     }
-    Material(Material&& rhs) : VulkanResource(rhs.context), setLayouts(std::move(rhs.setLayouts))
-    {
-        pipeline = rhs.pipeline;
-        pipelineLayout = rhs.pipelineLayout;
-        rhs.pipeline = VK_NULL_HANDLE;
-        rhs.pipelineLayout = VK_NULL_HANDLE;
-    }
 
     void Bind(VkCommandBuffer commandBuffer)
     {
@@ -1339,8 +1333,8 @@ public:
 
     ~Material()
     {
-        if(pipeline) vkDestroyPipeline(context.device, pipeline, nullptr);
-        if (pipelineLayout) vkDestroyPipelineLayout(context.device, pipelineLayout, nullptr);
+        vkDestroyPipeline(context.device, pipeline, nullptr);
+        vkDestroyPipelineLayout(context.device, pipelineLayout, nullptr);
     }
 };
 
@@ -2229,7 +2223,7 @@ struct MeshInstance : public Drawable
     }
 };
 
-struct ComputePipeline : VulkanResource, MoveConstructOnly
+struct ComputePipeline : VulkanResource, NonCopyable
 {
     std::map<std::uint32_t, HDescriptorSetLayout> setLayouts;
 
@@ -2416,6 +2410,12 @@ struct ComputePipeline : VulkanResource, MoveConstructOnly
     void Bind(VkCommandBuffer cmdBuffer)
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    }
+
+    ~ComputePipeline()
+    {
+        vkDestroyPipeline(context.device, pipeline, nullptr);
+        vkDestroyPipelineLayout(context.device, pipelineLayout, nullptr);
     }
 };
 
@@ -3433,16 +3433,18 @@ static void key_callback(GLFW::Window::KeyCallbackArgs args)
     }
 }
 
+
 int main()
 {
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return x * (8.0 - x); }, 0, 8, 2'000'000.0) << "    " << IntegrateZhopa() << "\n\n\n\n";
+
 
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, -hpi, hpi, 2'000'000.0) << "\n\n\n\n";
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, 0, 8) << "\n\n\n\n";
     
     volkInitialize();
     
-    glfwInit();
+    GLFW::Context glfwContext;
 
     GLFW::Window window;
 
@@ -3761,7 +3763,7 @@ int main()
     cbrTransformable.SetScale(glm::vec3(1000, 1000, 1000));
     MeshInstance cubemapMesh(assetManager, sphereMeshDescriptor, cbrMat.FullDescriptor(), cbrSets);
         
-    Image trueIntegral = LoadRaw(context, "test20000.raw", glm::uvec3(64, 64, 1), 2);
+    Image trueIntegral = LoadRaw(context, "actual4000.raw", glm::uvec3(64, 64, 1), 2);
 
     ImageView integratedBRDF(trueIntegral);
 

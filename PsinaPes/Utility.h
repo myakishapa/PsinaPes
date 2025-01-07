@@ -11,17 +11,27 @@ struct MoveConstructOnly
     MoveConstructOnly& operator=(MoveConstructOnly&&) = delete;
 };
 
+struct NonCopyable
+{
+    NonCopyable() = default;
+    NonCopyable(const NonCopyable&) = delete;
+    NonCopyable(NonCopyable&&) = delete;
+
+    NonCopyable& operator=(const NonCopyable&) = delete;
+    NonCopyable& operator=(NonCopyable&&) = delete;
+};
+
 template<typename T>
 class Delayed
 {
     alignas(T) std::byte buffer[sizeof(T)];
-    bool valid = false;
+    bool valid;
 
 public:
 
-    Delayed() {}
+    Delayed() : valid(false), buffer{} {}
     template<typename ...Args> requires std::constructible_from<T, Args...>
-    Delayed(Args... args)
+    Delayed(Args... args) : valid(false)
     {
         Create(args...);
     }
