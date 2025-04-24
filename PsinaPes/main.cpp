@@ -42,7 +42,6 @@
 #include <numbers>
 #include <thread>
 #include <print>
-#include <chrono>
 #include <functional>
 
 #include "assets.h"
@@ -57,7 +56,16 @@
 
 #include <vk_mem_alloc.h>
 
+#include <HvTree2/HvTree.h>
+#include <HvTree2/Common/ConstexprHash.h>
+#include <HvTree2/Conversion/Conversion.h>
+#include <HvTree2/Handle/StringWrapper.h>
+#include <HvTree2/Data/DedicatedAllocation.h>
+
+#include <DependencyGraph/Graph.hpp>
+
 using namespace std::literals;
+using namespace hv::literals;
 
 namespace fs = std::filesystem;
 
@@ -2065,7 +2073,10 @@ ImageWriteWrapper Describe(ImageView& imageView)
 }
 
 template<typename Type>
-concept Describable = std::derived_from<decltype(Describe(std::declval<Type>())), DescriptorSetWritable>;
+concept Describable =  requires(Type desc)
+{
+    { Describe(desc) } -> std::derived_from<DescriptorSetWritable>;
+};
 
 class HDescriptorPool : VulkanResource, MoveConstructOnly
 {
@@ -3433,27 +3444,382 @@ static void key_callback(GLFW::Window::KeyCallbackArgs args)
     }
 }
 
+struct DescriptorSetLayout : VulkanResource, MoveConstructOnly
+{
+    VkDescriptorSetLayout layout;
+
+    DescriptorSetLayout(std::span<VkDescriptorSetLayoutBinding> bindings, VulkanContext& context) : VulkanResource(context), layout(VK_NULL_HANDLE)
+    {
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.pBindings = bindings.data();
+        layoutInfo.bindingCount = bindings.size();
+
+        vkCreateDescriptorSetLayout(context.device, &layoutInfo, nullptr, &layout);
+    }
+
+    auto Handle() const
+    {
+        return layout;
+    }
+
+    ~DescriptorSetLayout()
+    {
+        vkDestroyDescriptorSetLayout(context.device, layout, nullptr);
+    }
+};
+
+template<>
+struct hv::conversion::HvToType<VkDescriptorSetLayoutBinding>
+{
+    static inline constexpr bool UseBinary = false;
+
+    template<typename DescriptorType, typename ...Args>
+    static VkDescriptorSetLayoutBinding Convert(DescriptorType desc, Args&&... args)
+    {
+        VkDescriptorSetLayoutBinding binding{};
+
+        binding.binding = desc["binding"_sk];
+        binding.descriptorCount = desc["descriptorCount"_sk];
+        binding.descriptorType = desc["descriptorType"_sk];
+        binding.stageFlags = desc["stageFlags"_sk];
+        binding.pImmutableSamplers = nullptr;
+
+        return binding;
+    }
+};
+template<>
+struct hv::conversion::TypeToHv<VkDescriptorSetLayoutBinding>
+{
+    static inline constexpr bool UseBinary = false;
+
+    template<typename DescriptorType, typename ...Args>
+    static void Convert(DescriptorType desc, VkDescriptorSetLayoutBinding binding, Args&&... args)
+    {
+        desc["binding"_sk] = binding.binding;
+        desc["descriptorCount"_sk] = binding.descriptorCount;
+        desc["descriptorType"_sk] = binding.descriptorType;
+        desc["stageFlags"_sk] = binding.stageFlags;
+
+        return;
+    }
+};
+
+template<>
+struct dg::CreateTraits<DescriptorSetLayout>
+{
+    template<typename CreateArgs, typename DependencyProvider>
+    static dg::Container Create(CreateArgs tree, DependencyProvider&& prov)
+    {
+        auto& vulkanContext = prov.Acquire<VulkanContext>("vulkanContext");
+         
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        bindings.reserve(hv::AcquireArraySize(tree));
+        for (auto tree : hv::Array(tree)) bindings.push_back(tree.Acquire<VkDescriptorSetLayoutBinding>());
+
+        return dg::Container::Create<DescriptorSetLayout>(std::span(bindings), vulkanContext);
+    }
+};
+
+struct PipelineLayout : VulkanResource, MoveConstructOnly
+{
+    VkPipelineLayout layout;
+
+    PipelineLayout(std::span<VkDescriptorSetLayout> setLayouts, std::span<VkPushConstantRange> pushConstantRanges, VulkanContext& context) : VulkanResource(context), layout(VK_NULL_HANDLE)
+    {
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+        pipelineLayoutInfo.setLayoutCount = setLayouts.size();
+        pipelineLayoutInfo.pSetLayouts = setLayouts.data();
+
+        pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
+        pipelineLayoutInfo.pushConstantRangeCount = pushConstantRanges.size();
+
+        vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &layout);
+    }
+
+    auto Handle() const
+    {
+        return layout;
+    }
+
+    ~PipelineLayout()
+    {
+        vkDestroyPipelineLayout(context.device, layout, nullptr);
+    }
+};
+
+template<>
+struct hv::conversion::HvToType<VkPushConstantRange>
+{
+    static inline constexpr bool UseBinary = false;
+
+    template<typename DescriptorType, typename ...Args>
+    static VkPushConstantRange Convert(DescriptorType desc, Args&&... args)
+    {
+        VkPushConstantRange range{};
+
+        range.offset = desc["offset"_sk];
+        range.size = desc["size"_sk];
+        range.stageFlags = desc["stageFlags"_sk];
+
+        return range;
+    }
+};
+template<>
+struct hv::conversion::TypeToHv<VkPushConstantRange>
+{
+    static inline constexpr bool UseBinary = false;
+
+    template<typename DescriptorType, typename ...Args>
+    static void Convert(DescriptorType desc, VkPushConstantRange range, Args&&... args)
+    {
+        desc["offset"_sk] = range.offset;
+        desc["size"_sk] = range.size;
+        desc["stageFlags"_sk] = range.stageFlags;
+    }
+};
+
+
+template<>
+struct dg::CreateTraits<PipelineLayout>
+{
+    template<typename CreateArgs, typename DependencyProvider>
+    static dg::Container Create(CreateArgs tree, DependencyProvider&& prov)
+    {
+        auto& vulkanContext = prov.Acquire<VulkanContext>("vulkanContext");
+
+        auto setLayoutGraphHandles = tree["setLayouts"_sk];
+        std::vector<VkDescriptorSetLayout> setLayouts;
+        setLayouts.reserve(hv::AcquireArraySize(setLayoutGraphHandles));
+        for (auto tree : hv::Array(setLayoutGraphHandles)) setLayouts.push_back( prov.Acquire<DescriptorSetLayout>(tree.Acquire<std::string>()).Handle() );
+
+        auto pushConstantRangesTree = tree["pushConstantRanges"_sk];
+        std::vector<VkPushConstantRange> pushConstantRanges;
+        pushConstantRanges.reserve(hv::AcquireArraySize(pushConstantRangesTree));
+        for (auto tree : hv::Array(pushConstantRangesTree)) pushConstantRanges.push_back(tree.Acquire<VkPushConstantRange>());
+        
+        return dg::Container::Create<PipelineLayout>(std::span(setLayouts), std::span(pushConstantRanges), vulkanContext);
+    }
+};
+
+struct GraphicsPipeline : VulkanResource, NonCopyable
+{
+    VkPipeline pipeline;
+
+public:
+
+    struct CreateInfo
+    {
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly =
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .primitiveRestartEnable = VK_FALSE
+        };
+        VkPipelineViewportStateCreateInfo viewportState =
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .viewportCount = 1,
+            .pViewports = nullptr,
+            .scissorCount = 1,
+            .pScissors = nullptr
+        };
+        VkPipelineRasterizationStateCreateInfo rasterization =
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .depthClampEnable = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode = VK_POLYGON_MODE_FILL,
+            .cullMode = VK_CULL_MODE_BACK_BIT,
+            .frontFace = VK_FRONT_FACE_CLOCKWISE,
+            .depthBiasEnable = VK_FALSE,
+            .lineWidth = 1.0f,
+
+        };
+        VkPipelineMultisampleStateCreateInfo multisampling =
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+            .sampleShadingEnable = VK_FALSE,
+        };
+
+        std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
+        
+        VkPipelineColorBlendStateCreateInfo colorBlending =
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .logicOpEnable = VK_FALSE,
+            .logicOp = VK_LOGIC_OP_COPY,
+            .attachmentCount = 0,
+            .pAttachments = nullptr,
+            .blendConstants = {0.f, 0.f, 0.f, 0.f}
+        };
+
+        std::vector<VkDynamicState> dynamicStates =
+        {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR
+        };
+        VkPipelineDepthStencilStateCreateInfo depthStencil =
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            .depthTestEnable = VK_TRUE,
+            .depthWriteEnable = VK_TRUE,
+            .depthCompareOp = VK_COMPARE_OP_LESS,
+            .depthBoundsTestEnable = VK_FALSE,
+            .stencilTestEnable = VK_FALSE
+        };
+
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        std::vector<VkVertexInputBindingDescription> vertexBindings;
+
+        std::vector<VkFormat> renderTargerFormats;
+        VkFormat depthStencilFormat;
+
+        CreateInfo()
+        {
+
+        }
+
+        CreateInfo(const CreateInfo& rhs) : inputAssembly(rhs.inputAssembly),
+            viewportState(rhs.viewportState),
+            rasterization(rhs.rasterization),
+            multisampling(rhs.multisampling),
+            colorBlendAttachments(rhs.colorBlendAttachments),
+            colorBlending(rhs.colorBlending),
+            dynamicStates(rhs.dynamicStates),
+            depthStencil(rhs.depthStencil),
+            vertexAttributes(rhs.vertexAttributes),
+            vertexBindings(rhs.vertexBindings),
+            renderTargerFormats(rhs.renderTargerFormats),
+            depthStencilFormat(rhs.depthStencilFormat)
+        {
+            FixReferences();
+        }
+
+        void FixReferences()
+        {
+            colorBlending.pAttachments = colorBlendAttachments.data();
+            colorBlending.attachmentCount = colorBlendAttachments.size();
+        }
+
+        CreateInfo& operator=(const CreateInfo&) = delete;
+    };
+
+    GraphicsPipeline(VulkanContext& context, PipelineLayout& pipelineLayout, const CreateInfo& createInfo) : VulkanResource(context)
+    {
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+        vertexInputInfo.vertexBindingDescriptionCount = createInfo.vertexBindings.size();
+        vertexInputInfo.pVertexBindingDescriptions = createInfo.vertexBindings.data();
+
+        vertexInputInfo.vertexAttributeDescriptionCount = createInfo.vertexAttributes.size();
+        vertexInputInfo.pVertexAttributeDescriptions = createInfo.vertexAttributes.data();
+
+        VkPipelineDynamicStateCreateInfo dynamicState{};
+        dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(createInfo.dynamicStates.size());
+        dynamicState.pDynamicStates = createInfo.dynamicStates.data();
+
+
+        std::vector<std::string> temp(descCount);
+        std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateInfos(descCount);
+        for (std::size_t i = 0; i < shaderStageCreateInfos.size(); i++)
+        {
+            VkPipelineShaderStageCreateInfo createInfo;
+            createInfo.stage = tree["stages"][std::to_string(i)]["stageType"].Acquire<VkShaderStageFlagBits>().value();
+            temp[i] = tree["stages"][std::to_string(i)]["mainFunction"].Acquire<std::string>().value();
+            auto& f = temp[i];
+            createInfo.pName = f.c_str();
+            createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            createInfo.pNext = nullptr;
+            createInfo.pSpecializationInfo = nullptr;
+            createInfo.flags = 0;
+
+            shaderStageCreateInfos[i] = createInfo;
+
+            auto code = tree["stages"][std::to_string(i)]["code"].Acquire<HvRawBinaryView>().value();
+
+            shaderStageCreateInfos[i].module = createShaderModule(context, code.data, code.size);
+        }
+
+
+        VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
+        pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        pipelineRenderingCreateInfo.colorAttachmentCount = createInfo.renderTargerFormats.size();
+        pipelineRenderingCreateInfo.pColorAttachmentFormats = createInfo.renderTargerFormats.data();
+        pipelineRenderingCreateInfo.depthAttachmentFormat = createInfo.depthStencilFormat;
+        pipelineRenderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = shaderStageCreateInfos.size();
+        pipelineInfo.pStages = shaderStageCreateInfos.data();
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &createInfo.inputAssembly;
+        pipelineInfo.pViewportState = &createInfo.viewportState;
+        pipelineInfo.pRasterizationState = &createInfo.rasterization;
+        pipelineInfo.pMultisampleState = &createInfo.multisampling;
+        pipelineInfo.pColorBlendState = &createInfo.colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.layout = pipelineLayout.Handle();
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.pDepthStencilState = &createInfo.depthStencil;
+
+        pipelineInfo.pNext = &pipelineRenderingCreateInfo;
+
+        if (vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create graphics pipeline!");
+        }
+    }
+
+    void Bind(VkCommandBuffer commandBuffer)
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    }
+
+    ~GraphicsPipeline()
+    {
+        vkDestroyPipeline(context.device, pipeline, nullptr);
+    }
+};
+
 
 int main()
 {
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return x * (8.0 - x); }, 0, 8, 2'000'000.0) << "    " << IntegrateZhopa() << "\n\n\n\n";
-
-
+    using PesHandle = hv::handle::hierarchical::FixedCapacity<std::uint64_t, 8>;
+    using PesStorage = hv::data::DedicatedAllocationStorage<PesHandle>;
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, -hpi, hpi, 2'000'000.0) << "\n\n\n\n";
     //std::cout << std::setprecision(16) << IntegrateQuad([](double x) { return L::Checked(x, 0.325, 0.34); }, 0, 8) << "\n\n\n\n";
+
+    dg::Graph<std::string, hv::Descriptor<PesHandle, PesStorage>> dependencyGraph;
+    PesStorage treeData;
+    hv::Descriptor root(treeData);
     
     volkInitialize();
     
     GLFW::Context glfwContext;
 
-    GLFW::Window window;
+    auto windowRef = dependencyGraph.EmplaceNode<GLFW::Window>("window");
+
+    GLFW::Window &window = *windowRef;
 
     glfwSetInputMode(window.Handle(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetInputMode(window.Handle(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
     window.BindKeyCallback(key_callback);
+    
+    root["createArgs"_sk / "vulkanContext"_sk] = "window"sv;
+    dependencyGraph.SetDependencies("vulkanContext", root["createArgs"_sk / "vulkanContext"_sk]);
 
-    VulkanContext context(window);
+    auto contextRef = dependencyGraph.Acquire<VulkanContext>("vulkanContext");
+
+    VulkanContext &context = *contextRef;
 
     camera.fov = 90.f;
     camera.UpdateProjection(glm::uvec2(1920, 1080));
@@ -3763,7 +4129,7 @@ int main()
     cbrTransformable.SetScale(glm::vec3(1000, 1000, 1000));
     MeshInstance cubemapMesh(assetManager, sphereMeshDescriptor, cbrMat.FullDescriptor(), cbrSets);
         
-    Image trueIntegral = LoadRaw(context, "actual4000.raw", glm::uvec3(64, 64, 1), 2);
+    Image trueIntegral = LoadRaw(context, "actual20000threshold1e-3.raw", glm::uvec3(64, 64, 1), 2);
 
     ImageView integratedBRDF(trueIntegral);
 
@@ -3873,8 +4239,6 @@ int main()
         hinput(window);
 
         inFlightFences[currentFrame].Reset();
-
-        auto prevFrame = currentFrame == 0 ? MAX_FRAMES_IN_FLIGHT - 1 : currentFrame - 1;
 
         commandBuffers[currentFrame].Reset();
         {

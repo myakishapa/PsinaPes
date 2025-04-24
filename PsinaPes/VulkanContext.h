@@ -6,6 +6,10 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
+#include <HvTree2/HvTree.h>
+
+#include <DependencyGraph/Graph.hpp>
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
 {
     std::cerr << "validation layer : " << pCallbackData->pMessage << std::endl << std::endl << std::endl << std::endl << std::endl << std::endl;
@@ -458,4 +462,15 @@ struct VulkanResource
     VulkanContext& context;
 
     VulkanResource(VulkanContext& context) : context(context) {}
+};
+
+template<>
+struct dg::CreateTraits<VulkanContext>
+{
+    template<typename CreateArgs, typename DependencyProvider>
+    static dg::Container Create(CreateArgs tree, DependencyProvider&& prov)
+    {
+        auto& window = prov.Acquire<GLFW::Window>(tree.Acquire<std::string>());
+        return dg::Container::Create<VulkanContext>(window);
+    }
 };

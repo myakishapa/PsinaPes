@@ -46,13 +46,13 @@ constexpr std::uint64_t Hash(std::string_view str)
 
         switch (calclen & 7)
         {
-        case 7: hash ^= static_cast<uint64_t>(data2[6]) << 48ULL; [[fallthrough]];
-        case 6: hash ^= static_cast<uint64_t>(data2[5]) << 40ULL; [[fallthrough]];
-        case 5: hash ^= static_cast<uint64_t>(data2[4]) << 32ULL; [[fallthrough]];
-        case 4: hash ^= static_cast<uint64_t>(data2[3]) << 24ULL; [[fallthrough]];
-        case 3: hash ^= static_cast<uint64_t>(data2[2]) << 16ULL; [[fallthrough]];
-        case 2: hash ^= static_cast<uint64_t>(data2[1]) << 8ULL; [[fallthrough]];
-        case 1: hash ^= static_cast<uint64_t>(data2[0]); [[fallthrough]];
+        case 7: hash ^= static_cast<uint64_t>(data2[6]) << 48ULL;
+        case 6: hash ^= static_cast<uint64_t>(data2[5]) << 40ULL;
+        case 5: hash ^= static_cast<uint64_t>(data2[4]) << 32ULL;
+        case 4: hash ^= static_cast<uint64_t>(data2[3]) << 24ULL;
+        case 3: hash ^= static_cast<uint64_t>(data2[2]) << 16ULL;
+        case 2: hash ^= static_cast<uint64_t>(data2[1]) << 8ULL;
+        case 1: hash ^= static_cast<uint64_t>(data2[0]);;
             hash *= multiply;
         };
     }
